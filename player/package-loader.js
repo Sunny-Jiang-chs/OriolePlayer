@@ -150,7 +150,13 @@ export function normalizePackage(input) {
 export async function loadUrlPackage(url) {
   const manifestUrl = new URL(url, location.href);
   const response = await fetch(manifestUrl, { cache: "no-store" });
-  if (!response.ok) throw new Error(`数据包请求失败 (${response.status})：${manifestUrl.pathname}`);
+  if (!response.ok) {
+    // The Android local server provides useful permission/reselection guidance.
+    const localMessage = manifestUrl.origin === "https://appassets.androidplatform.net"
+      && response.headers.get("content-type")?.startsWith("text/plain")
+      ? (await response.text()).trim().slice(0, 300) : "";
+    throw new Error(localMessage || `数据包请求失败 (${response.status})：${manifestUrl.pathname}`);
+  }
   const data = normalizePackage(await response.json());
   return { data, resolve: (uri) => new URL(uri, manifestUrl).href, dispose() {} };
 }

@@ -15,9 +15,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-/** Package manifests and media stay on the device. SAF grants only the chosen folder. */
+/** Package manifests and media stay on the device; external folders are registered in place. */
 final class PackageStore {
     interface Progress { void update(String value) throws IOException; }
+    static final class DirectoryAccessException extends IOException {
+        DirectoryAccessException() { super("所选目录无法读取，请恢复文件访问权限或重新选择数据包目录"); }
+    }
     static final String ORIGIN = "https://appassets.androidplatform.net";
     private final Context context;
     private final SharedPreferences preferences;
@@ -77,6 +80,20 @@ final class PackageStore {
         return value;
     }
 
+    /** A decoded package-relative filename. Canonical checks also reject symlink escapes. */
+    static File resolveFileWithin(File root, String relative) throws IOException {
+        safePath(relative);
+        File canonicalRoot = root.getCanonicalFile();
+        if (!canonicalRoot.isDirectory() || !canonicalRoot.canRead()) throw new DirectoryAccessException();
+        File file = new File(canonicalRoot, relative).getCanonicalFile();
+        String boundary = canonicalRoot.getPath();
+        if (!boundary.endsWith(File.separator)) boundary += File.separator;
+        if (!file.getPath().startsWith(boundary)) throw new IOException("数据包路径超出所选目录");
+        if (!file.isFile()) throw new FileNotFoundException("数据包资源文件不存在，请重新选择完整的数据包目录");
+        if (!file.canRead()) throw new DirectoryAccessException();
+        return file;
+    }
+
     static JSONObject readManifest(InputStream stream) throws Exception {
         try (InputStream input = stream; ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
             byte[] chunk = new byte[65536]; int n;
@@ -108,6 +125,29 @@ final class PackageStore {
         JSONObject manifest = readManifest(context.getContentResolver().openInputStream(manifestUri));
         String id = UUID.nameUUIDFromBytes(tree.toString().getBytes(StandardCharsets.UTF_8)).toString();
         JSONObject row = new JSONObject().put("id", id).put("kind", "tree").put("uri", tree.toString())
+                .put("title", manifest.getJSONObject("project").getString("title"));
+        register(row);
+        return selection(row);
+    }
+
+    /** Registers a folder without copying media or scanning unrelated files. */
+    JSONObject addDirectory(File root) throws Exception {
+        File canonicalRoot = root.getCanonicalFile();
+        File manifestFile = resolveFileWithin(canonicalRoot, "package.json");
+        JSONObject manifest = readManifest(new FileInputStream(manifestFile));
+        Set<String> checked = new HashSet<>();
+        JSONObject assets = manifest.getJSONObject("assets");
+        for (String kind : new String[]{"visuals", "audio"}) {
+            JSONArray rows = assets.getJSONArray(kind);
+            for (int i = 0; i < rows.length(); i++) {
+                JSONObject asset = rows.getJSONObject(i);
+                if (!asset.optString("status").equals("available")) continue;
+                String path = Uri.decode(asset.getString("uri"));
+                if (checked.add(path)) resolveFileWithin(canonicalRoot, path);
+            }
+        }
+        String id = UUID.nameUUIDFromBytes(("file:" + canonicalRoot.getPath()).getBytes(StandardCharsets.UTF_8)).toString();
+        JSONObject row = new JSONObject().put("id", id).put("kind", "file").put("path", canonicalRoot.getPath())
                 .put("title", manifest.getJSONObject("project").getString("title"));
         register(row);
         return selection(row);
@@ -190,21 +230,33 @@ final class PackageStore {
 
     InputStream open(String id, String path) throws Exception {
         JSONObject row = find(id); safePath(path);
-        if (row.getString("kind").equals("tree"))
-            return context.getContentResolver().openInputStream(resolveTree(Uri.parse(row.getString("uri")), path));
-        return new FileInputStream(new File(new File(directory, id), path));
+        if (row.getString("kind").equals("tree")) {
+            InputStream stream = context.getContentResolver().openInputStream(resolveTree(Uri.parse(row.getString("uri")), path));
+            if (stream == null) throw new DirectoryAccessException();
+            return stream;
+        }
+        return new FileInputStream(resolveRegisteredFile(row, path));
     }
 
     long size(String id, String path) throws Exception {
         JSONObject row = find(id); safePath(path);
         if (!row.getString("kind").equals("tree")) {
-            File file = new File(new File(directory, id), path);
-            if (!file.isFile()) throw new FileNotFoundException();
-            return file.length();
+            return resolveRegisteredFile(row, path).length();
         }
         Uri uri = resolveTree(Uri.parse(row.getString("uri")), path);
         try (Cursor cursor = context.getContentResolver().query(uri, new String[]{DocumentsContract.Document.COLUMN_SIZE}, null, null, null)) {
             return cursor != null && cursor.moveToFirst() && !cursor.isNull(0) ? cursor.getLong(0) : -1;
+        }
+    }
+
+    private File resolveRegisteredFile(JSONObject row, String path) throws Exception {
+        switch (row.getString("kind")) {
+            case "file": return resolveFileWithin(new File(row.getString("path")), path);
+            case "local":
+                String id = safePath(row.getString("id"));
+                if (id.contains("/")) throw new IOException("无效的数据包登记");
+                return resolveFileWithin(new File(directory, id), path);
+            default: throw new IOException("未知的数据包访问方式，请重新选择数据包");
         }
     }
 

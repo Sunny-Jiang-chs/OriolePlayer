@@ -3,18 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#171a1d">
+  <meta name="theme-color" content="#111214">
   <title>黄鹂播放器</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="./player/app.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="./" aria-label="黄鹂播放器首页"><span class="brand-mark">黄鹂</span><span>播放器</span></a>
+    <a class="brand" href="./" aria-label="黄鹂播放器首页"><span>黄鹂播放器</span></a>
     <div class="project-name"><span id="project-title">正在载入数据包</span><span id="project-meta" class="muted"></span></div>
     <div class="top-actions">
       <select id="package-select" class="package-select" aria-label="数据包"><option value="">数据包</option></select>
-      <label class="icon-button" title="打开数据包目录" aria-label="打开数据包目录"><i data-lucide="folder-open"></i><input id="package-folder" type="file" webkitdirectory directory multiple hidden></label>
+      <label class="icon-button directory-button" title="打开数据包目录" aria-label="打开数据包目录"><i data-lucide="folder-open"></i><span>目录</span><input id="package-folder" type="file" webkitdirectory directory multiple hidden></label>
     </div>
   </header>
   <main class="app-shell">
@@ -36,12 +36,13 @@
           <button id="scene-panel-toggle" class="tool-button" type="button" title="场景列表" aria-label="场景列表" aria-controls="scene-panel" aria-expanded="true"><i data-lucide="panel-left"></i></button>
           <button id="inspector-panel-toggle" class="tool-button" type="button" title="页面信息" aria-label="页面信息" aria-controls="info-panel" aria-expanded="false"><i data-lucide="info"></i></button>
           <button id="dialogue-toggle" class="tool-button" type="button" title="隐藏对白" aria-label="隐藏对白" aria-pressed="false"><i data-lucide="message-square"></i></button>
-          <button id="sound-toggle" class="tool-button" type="button" title="开启声音" aria-label="开启声音"><i data-lucide="volume-x"></i></button>
+          <button id="sound-toggle" class="tool-button" type="button" title="关闭声音" aria-label="关闭声音"><i data-lucide="volume-2"></i></button>
           <div class="mixer-wrap">
             <button id="mixer-toggle" class="tool-button" type="button" title="音量设置" aria-label="音量设置" aria-expanded="false" aria-controls="audio-mixer"><i data-lucide="sliders-horizontal"></i></button>
             <section id="audio-mixer" class="audio-mixer" aria-label="音量设置" hidden>
               <label class="mixer-row"><span>背景音乐 <output id="bgm-volume-value" for="bgm-volume">100%</output></span><input id="bgm-volume" type="range" min="0" max="100" step="1" value="100" aria-label="背景音乐音量"></label>
               <label class="mixer-row"><span>音效与语音 <output id="other-volume-value" for="other-volume">100%</output></span><input id="other-volume" type="range" min="0" max="100" step="1" value="100" aria-label="音效与语音音量"></label>
+              <div class="bgm-health"><span id="bgm-status" role="status">无 BGM</span><button id="bgm-retry" type="button" disabled>重试 BGM</button></div>
             </section>
           </div>
           <button id="auto-toggle" class="tool-button labeled" type="button" title="自动推进"><i data-lucide="play"></i><span>自动</span></button>

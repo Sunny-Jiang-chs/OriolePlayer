@@ -78,7 +78,11 @@ final class LocalContent {
             if (request.getMethod().equals("HEAD")) { stream.close(); stream = new ByteArrayInputStream(new byte[0]); }
             return new WebResourceResponse(mime, mime.startsWith("text/") || mime.equals("application/json") ? "UTF-8" : null,
                     status, status == 206 ? "Partial Content" : "OK", headers, stream);
-        } catch (Exception error) { return message(404, "Not Found", "本地文件不可用；请重新选择数据包目录"); }
+        } catch (SecurityException | PackageStore.DirectoryAccessException error) {
+            return message(403, "Forbidden", "所选目录无法读取，请恢复文件访问权限或重新选择数据包目录");
+        } catch (Exception error) {
+            return message(404, "Not Found", "本地文件不可用；请确认数据包完整，并重新选择数据包目录");
+        }
     }
 
     static WebResourceResponse json(String content) { return response("application/json", 200, "OK", content); }

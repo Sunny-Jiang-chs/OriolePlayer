@@ -5,6 +5,7 @@ import android.app.Instrumentation;
 import android.content.Context;
 import android.net.Uri;
 import android.os.Bundle;
+import android.system.Os;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import org.json.JSONArray;
@@ -46,7 +47,7 @@ public final class SmokeInstrumentation extends Instrumentation {
                     + ": " + error.getMessage() + "\n");
             finish(Activity.RESULT_CANCELED, result);
         } finally {
-            for (File file : temporaryFiles) if (file.exists()) file.delete();
+            for (int i = temporaryFiles.size() - 1; i >= 0; i--) temporaryFiles.get(i).delete();
         }
     }
 
@@ -143,10 +144,105 @@ public final class SmokeInstrumentation extends Instrumentation {
         check(rejected, "Traversal archive was accepted");
         check(!new File(context.getFilesDir(), "packages/" + marker).exists(), "Traversal archive escaped its staging directory");
         check(store.packages().length() == countBefore, "Rejected archive was registered");
+        checkDirectDirectory(context, store, content);
         result.putString("packageUrl", packageUri.toString());
         result.putInt("scenes", manifest.getJSONArray("scenes").length());
         result.putInt("audioAssets", clips.length());
         result.putString("rangeMime", range.getMimeType());
+    }
+
+    /** Synthetic bytes only: hidden folders, no-copy access, URL encoding and root boundaries. */
+    private void checkDirectDirectory(Context context, PackageStore store, LocalContent content) throws Exception {
+        String originalList = context.getSharedPreferences("packages", Context.MODE_PRIVATE).getString("list", "[]");
+        File base = new File(context.getCacheDir(), "directory-check-" + UUID.randomUUID());
+        File hidden = new File(base, ".hidden-package"), media = new File(hidden, "media");
+        temporaryFiles.add(base); temporaryFiles.add(hidden); temporaryFiles.add(media);
+        check(media.mkdirs(), "Cannot create synthetic hidden directory");
+        File clip = new File(media, "clip 100%.ogg");
+        temporaryFiles.add(clip);
+        byte[] initial = new byte[]{10, 20, 30, 40, 50, 60};
+        try (OutputStream out = new FileOutputStream(clip)) { out.write(initial); }
+        JSONObject asset = new JSONObject().put("id", "sample").put("status", "available")
+                .put("uri", "media/clip%20100%25.ogg");
+        JSONObject manifest = new JSONObject().put("schemaVersion", "1.1.0")
+                .put("project", new JSONObject().put("title", "Synthetic directory"))
+                .put("scenes", new JSONArray())
+                .put("assets", new JSONObject().put("visuals", new JSONArray()).put("audio", new JSONArray().put(asset)));
+        File manifestFile = new File(hidden, "package.json");
+        temporaryFiles.add(manifestFile);
+        writeManifest(manifestFile, manifest);
+        try {
+            int before = store.packages().length();
+            JSONObject selected = store.addDirectory(hidden);
+            String id = Uri.parse(selected.getString("url")).getPathSegments().get(1);
+            check(store.packages().length() == before + 1, "Hidden directory was not registered");
+            JSONObject same = store.addDirectory(new File(base, ".hidden-package/../.hidden-package"));
+            check(selected.getString("url").equals(same.getString("url")) && store.packages().length() == before + 1,
+                    "Selecting the same canonical directory created a duplicate");
+            check(!new File(context.getFilesDir(), "packages/" + id).exists(), "Direct directory unexpectedly copied media");
+            try (InputStream in = store.open(id, "media/clip 100%.ogg")) {
+                check(Arrays.equals(initial, readLimited(in, 64)), "Hidden directory bytes could not be read");
+            }
+            byte[] updated = new byte[]{61, 62, 63, 64, 65, 66, 67};
+            try (OutputStream out = new FileOutputStream(clip)) { out.write(updated); }
+            check(store.size(id, "media/clip 100%.ogg") == updated.length, "Direct directory size did not reflect source changes");
+            Uri resource = Uri.parse(PackageStore.ORIGIN).buildUpon().appendPath("packages").appendPath(id)
+                    .appendPath("media").appendPath("clip 100%.ogg").build();
+            WebResourceResponse range = content.serve(new Request(resource, "GET", "bytes=1-3"));
+            try (InputStream in = range.getData()) {
+                check(range.getStatusCode() == 206 && "bytes 1-3/7".equals(range.getResponseHeaders().get("Content-Range"))
+                        && Arrays.equals(new byte[]{62, 63, 64}, readLimited(in, 64)),
+                        "Encoded direct-file request did not return the updated byte range");
+            }
+            boolean rejected = false;
+            try { PackageStore.resolveFileWithin(hidden, "../outside.ogg"); }
+            catch (IOException error) { rejected = true; }
+            check(rejected, "Direct directory accepted a parent traversal");
+            WebResourceResponse traversal = content.serve(new Request(Uri.parse(PackageStore.ORIGIN
+                    + "/packages/" + id + "/%2e%2e/outside.ogg"), "GET", null));
+            try (InputStream ignored = traversal.getData()) {
+                check(traversal.getStatusCode() == 404, "Encoded traversal request was not rejected");
+            }
+
+            File outside = new File(base, "outside.ogg"), link = new File(media, "escape.ogg");
+            temporaryFiles.add(outside); temporaryFiles.add(link);
+            try (OutputStream out = new FileOutputStream(outside)) { out.write(99); }
+            Os.symlink(outside.getCanonicalPath(), link.getPath());
+            rejected = false;
+            try { PackageStore.resolveFileWithin(hidden, "media/escape.ogg"); }
+            catch (IOException error) { rejected = true; }
+            check(rejected, "Direct directory accepted a symlink outside the selected root");
+            asset.put("uri", "media/escape.ogg");
+            writeManifest(manifestFile, manifest);
+            rejected = false;
+            try { store.addDirectory(hidden); }
+            catch (IOException error) { rejected = true; }
+            check(rejected && store.packages().length() == before + 1,
+                    "Manifest symlink escape was registered or changed the catalog");
+            asset.put("uri", "media/missing.ogg");
+            writeManifest(manifestFile, manifest);
+            rejected = false;
+            try { store.addDirectory(hidden); }
+            catch (IOException error) { rejected = true; }
+            check(rejected, "Directory manifest accepted a missing available resource");
+
+            JSONArray saved = store.packages();
+            for (int i = 0; i < saved.length(); i++) {
+                JSONObject row = saved.getJSONObject(i);
+                if (id.equals(row.getString("id"))) row.put("kind", "unsupported");
+            }
+            context.getSharedPreferences("packages", Context.MODE_PRIVATE).edit().putString("list", saved.toString()).commit();
+            rejected = false;
+            try { store.open(id, "package.json").close(); }
+            catch (IOException error) { rejected = true; }
+            check(rejected, "Unknown storage kind fell back to a file access method");
+        } finally {
+            context.getSharedPreferences("packages", Context.MODE_PRIVATE).edit().putString("list", originalList).commit();
+        }
+    }
+
+    private static void writeManifest(File file, JSONObject manifest) throws IOException {
+        try (OutputStream out = new FileOutputStream(file)) { out.write(manifest.toString().getBytes(StandardCharsets.UTF_8)); }
     }
 
     /** The fallback keeps example text and audio, but marks images missing without opening them. */

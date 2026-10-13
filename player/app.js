@@ -18,6 +18,7 @@ const el = {
   speaker: $("speaker"), pageLabel: $("page-label"), text: $("dialogue-text"), choices: $("choices"), previous: $("previous"), next: $("next"), firstEventCg: $("first-event-cg"), slider: $("page-slider"),
   sound: $("sound-toggle"), mixerToggle: $("mixer-toggle"), mixer: $("audio-mixer"),
   bgmVolume: $("bgm-volume"), bgmVolumeValue: $("bgm-volume-value"), otherVolume: $("other-volume"), otherVolumeValue: $("other-volume-value"),
+  bgmStatus: $("bgm-status"), bgmRetry: $("bgm-retry"),
   auto: $("auto-toggle"), fullscreenView: $("fullscreen-view"), exitFullscreen: $("exit-fullscreen"),
   scenePanelToggle: $("scene-panel-toggle"), inspectorPanelToggle: $("inspector-panel-toggle"), status: $("page-status"),
   scenePanel: $("scene-panel"), sceneClose: $("scene-close"), infoPanel: $("info-panel"), infoClose: $("info-close"), backdrop: $("panel-backdrop"),
@@ -27,13 +28,15 @@ const el = {
 
 const state = {
   data: null, source: null, scene: null, pageIndex: 0, audio: new Map(),
-  muted: true, auto: false, autoTimer: 0, toastTimer: 0, lastWheelAt: 0, wheelDelta: 0, renderToken: 0, loadToken: 0, bytes: new Map(),
+  muted: false, audioSuspended: false, auto: false, autoTimer: 0, toastTimer: 0, lastWheelAt: 0, wheelDelta: 0, renderToken: 0, loadToken: 0, bytes: new Map(),
+  bgmIntent: null, bgmFinished: false, bgmFailure: null,
   audioSequence: 0, audioPageToken: 0, audioPageStartedAt: 0, voiceWait: null
 };
 state.audioOnceKeys = new Set();
 state.readingHistory = [];
 const ui = { scenesHidden: false, scenesOpen: false, infoOpen: false, dialogueVisible: true };
 const mobileLayout = matchMedia("(max-width: 760px), (pointer: coarse) and (max-height: 600px)");
+const portraitLibrary = matchMedia("(max-width: 760px) and (orientation: portrait)");
 const overlayInfo = matchMedia("(max-width: 1120px), (pointer: coarse) and (max-height: 600px)");
 function savedVolume(key) {
   try {
@@ -186,6 +189,8 @@ function settleVoiceWait(player) {
 
 function removeAudioPlayer(player) {
   cancelAudioFade(player);
+  player._playAttempt = (player._playAttempt || 0) + 1;
+  player._playPending = false;
   player.pause();
   if (state.audio.get(player._key) === player) state.audio.delete(player._key);
   settleVoiceWait(player);
@@ -216,22 +221,33 @@ function fadeAudioPlayer(player, target, fadeMs = 0, onFinish = null) {
 }
 
 function stopBus(bus, fadeMs = 0) {
+  if (bus === "bgm") {
+    state.bgmIntent = null;
+    state.bgmFinished = false;
+    state.bgmFailure = null;
+  }
   for (const player of [...state.audio.values()]) {
     if (player._bus !== bus) continue;
     player._stopping = true;
     fadeAudioPlayer(player, 0, fadeMs, () => removeAudioPlayer(player));
   }
+  if (bus === "bgm") syncBgmStatus();
 }
 
 function stopAllAudio() {
+  state.bgmIntent = null;
+  state.bgmFinished = false;
+  state.bgmFailure = null;
   state.voiceWait = null;
   for (const player of [...state.audio.values()]) removeAudioPlayer(player);
   state.audio.clear();
+  syncBgmStatus();
 }
 
 function updatePlayerVolume(player) {
   const master = player._bus === "bgm" || player._bus.startsWith("bgm:") ? masterVolume.bgm : masterVolume.other;
   player.volume = Math.max(0, Math.min(1, player._eventVolume * master));
+  if (player._bus === "bgm") syncBgmStatus();
 }
 
 function applyMasterVolumes() {
@@ -242,11 +258,75 @@ function synchronizeAudioPlayer(player, settings, { immediate = false } = {}) {
   if (typeof settings.loop === "boolean") player.loop = settings.loop;
   player._persistent = player.loop && player._bus !== "voice" && player._bus !== "bgm";
   const target = audioVolume(settings.volume, player._targetVolume);
+  if (player._bus === "bgm" && state.bgmIntent?.assetId === player._assetId) {
+    state.bgmIntent.volume = target;
+    state.bgmIntent.loop = player.loop;
+  }
   if (immediate || player._stopping || target !== player._targetVolume) {
     player._stopping = false;
     fadeAudioPlayer(player, target, immediate ? 0 : settings.fadeMs);
   } else updatePlayerVolume(player);
   if (player.loop) settleVoiceWait(player);
+}
+
+function syncBgmStatus() {
+  const intent = state.bgmIntent;
+  const player = state.audio.get("bgm");
+  let status = "none", label = "无 BGM";
+  if (intent) {
+    if (state.bgmFailure) {
+      status = "failed";
+      const { name, code } = state.bgmFailure;
+      const reason = { 2: "读取失败", 3: "解码失败", 4: "格式或资源不可用" }[code] || "播放失败";
+      label = `${reason} · ${name}${code ? ` (${code})` : ""}`;
+    } else if (state.bgmFinished) { status = "ended"; label = "BGM 已结束"; }
+    else if (state.muted) { status = "muted"; label = "已静音 · 声音开关已关闭"; }
+    else if (masterVolume.bgm === 0) { status = "muted"; label = "已静音 · BGM 主音量为 0%"; }
+    else if (intent.volume === 0) { status = "muted"; label = "已静音 · 本段 BGM 音量为 0%"; }
+    else if (state.audioSuspended || document.hidden) { status = "paused"; label = "已暂停 · 应用在后台"; }
+    else if (player?._blocked) { status = "paused"; label = "已暂停 · 点击页面开始播放"; }
+    else if (player?._interrupted) { status = "paused"; label = "BGM 播放中断 · 点击页面重试"; }
+    else if (player?._playPending || player?._loading || player && typeof player.readyState === "number" && player.readyState < 3) {
+      status = "loading"; label = "BGM 载入中";
+    } else if (!player || player.paused) { status = "paused"; label = "BGM 已暂停"; }
+    else { status = "playing"; label = "BGM 播放中"; }
+  }
+  el.bgmStatus.textContent = label;
+  el.bgmStatus.dataset.status = status;
+  el.bgmRetry.disabled = !intent || state.bgmFinished || state.audioSuspended || document.hidden || state.muted || Boolean(player?._playPending);
+}
+
+function audioFailure(player, error) {
+  player._playAttempt = (player._playAttempt || 0) + 1;
+  player._playPending = false;
+  const code = Number(error?.code) || 0;
+  const knownNames = new Set(["AbortError", "NotAllowedError", "NotSupportedError", "NetworkError", "EncodingError", "MediaError"]);
+  const name = knownNames.has(error?.name) ? error.name : code ? "MediaError" : "Error";
+  if (name === "AbortError" || code === 1) {
+    // Media interruptions are recoverable; do not discard the desired track.
+    player._retryAfter = performance.now() + 1000;
+    player._interrupted = true;
+    player._loading = false;
+    settleVoiceWait(player);
+    syncBgmStatus();
+    return;
+  }
+  if (player._bus === "bgm") state.bgmFailure = { name, code };
+  removeAudioPlayer(player);
+  syncBgmStatus();
+  say(player._bus === "bgm" ? "BGM 播放失败，可在音量面板查看状态并重试。" : "音频载入失败，请检查数据包中的音频文件。");
+}
+
+function recoverBgm({ userInitiated = false } = {}) {
+  if (!state.bgmIntent || state.bgmFinished || state.muted || state.audioSuspended || document.hidden) { syncBgmStatus(); return; }
+  const current = state.audio.get("bgm");
+  if (current) {
+    if (userInitiated) current._retryAfter = 0;
+    if (current.paused && (!current._blocked || userInitiated)) startAudioPlayer(current);
+  } else if (!state.bgmFailure || userInitiated) {
+    playAudioEvent({ ...state.bgmIntent, fadeMs: 0 });
+  }
+  syncBgmStatus();
 }
 
 function watchVoiceProgress(player) {
@@ -263,6 +343,51 @@ function watchVoiceProgress(player) {
   }, 15000);
 }
 
+function startAudioPlayer(player) {
+  if (state.audio.get(player._key) !== player || state.audioSuspended || document.hidden || player._ended || player._stopping || player._playPending || performance.now() < (player._retryAfter || 0)) return;
+  const attempt = (player._playAttempt || 0) + 1;
+  player._playAttempt = attempt;
+  player._playPending = true;
+  player._blocked = false;
+  player._interrupted = false;
+  player.muted = state.muted;
+  if (!state.muted && player._voiceWait?.pageToken === state.audioPageToken) {
+    player._voiceWait.settled = false;
+    player._voiceWait.finishedAt = 0;
+    state.voiceWait = player._voiceWait;
+    watchVoiceProgress(player);
+  }
+  const failed = (error) => {
+    if (state.audio.get(player._key) !== player || player._playAttempt !== attempt) return;
+    player._playPending = false;
+    if (error?.name === "NotAllowedError") {
+      // Keep the current BGM/voice until a user gesture unlocks browser playback.
+      player._blocked = true;
+      settleVoiceWait(player);
+      say("点击页面即可开始播放声音。");
+      syncBgmStatus();
+      return;
+    }
+    audioFailure(player, error);
+  };
+  try {
+    if (player.error?.code === 1) player.load();
+    Promise.resolve(player.play()).then(() => {
+      if (player._playAttempt === attempt) player._playPending = false;
+      syncBgmStatus();
+    }).catch(failed);
+  } catch (error) { failed(error); }
+  syncBgmStatus();
+}
+
+function retryBlockedAudio() {
+  if (state.muted || state.audioSuspended) return;
+  for (const player of state.audio.values()) {
+    if (player._blocked) startAudioPlayer(player);
+  }
+  recoverBgm();
+}
+
 function playAudioEvent(event) {
   if (event.status === "unresolved") return null;
   if (event.action === "stop") {
@@ -270,12 +395,16 @@ function playAudioEvent(event) {
     return null;
   }
   if (event.action === "volume") {
+    if (event.bus === "bgm" && state.bgmIntent) {
+      state.bgmIntent.volume = audioVolume(event.volume, state.bgmIntent.volume);
+      if (typeof event.loop === "boolean") state.bgmIntent.loop = event.loop;
+    }
     for (const player of state.audio.values()) {
       if (player._bus === event.bus) synchronizeAudioPlayer(player, event);
     }
+    syncBgmStatus();
     return null;
   }
-  if (state.muted) return null;
   if (event.onceKey && state.audioOnceKeys.has(event.onceKey)) return null;
   const asset = event.assetId && state.data.assets.audioById.get(event.assetId);
   if (!asset || asset.status !== "available") {
@@ -285,7 +414,14 @@ function playAudioEvent(event) {
   const current = state.audio.get(event.bus);
   if (event.onceKey) state.audioOnceKeys.add(event.onceKey);
   if ((event.bus === "bgm" || event.loop) && current?._assetId === asset.id && !current._ended) {
+    if (event.bus === "bgm") {
+      state.bgmIntent = { action: "play", bus: "bgm", assetId: asset.id,
+        volume: audioVolume(event.volume, current._stopping ? audioVolume(asset.volume) : current._targetVolume), loop: event.loop ?? current.loop };
+      state.bgmFinished = false;
+      state.bgmFailure = null;
+    }
     synchronizeAudioPlayer(current, { ...event, volume: event.volume ?? (current._stopping ? audioVolume(asset.volume) : current._targetVolume) });
+    if (event.bus === "bgm") recoverBgm();
     return current;
   }
   if (event.bus !== "sfx") stopBus(event.bus);
@@ -295,6 +431,12 @@ function playAudioEvent(event) {
     }
   }
   const key = event.bus === "sfx" ? `sfx:${++state.audioSequence}` : event.bus;
+  if (event.bus === "bgm") {
+    state.bgmIntent = { action: "play", bus: "bgm", assetId: asset.id,
+      volume: audioVolume(event.volume, audioVolume(asset.volume)), loop: event.loop ?? true };
+    state.bgmFinished = false;
+    state.bgmFailure = null;
+  }
   let uri;
   try { uri = assetUrl(asset); } catch (error) { say(error.message); return null; }
   const player = new Audio(uri);
@@ -307,6 +449,7 @@ function playAudioEvent(event) {
   player._fadeToken = 0;
   player._stopping = false;
   player._ended = false;
+  player.muted = state.muted;
   player.loop = event.loop ?? (event.bus === "bgm");
   player._persistent = player.loop && event.bus !== "voice" && event.bus !== "bgm";
   updatePlayerVolume(player);
@@ -314,26 +457,33 @@ function playAudioEvent(event) {
     if (state.audio.get(key) !== player) return;
     if (event.bus === "bgm") {
       cancelAudioFade(player);
-      player._ended = true;
+      player._ended = !player.loop;
+      state.bgmFinished = !player.loop;
+      syncBgmStatus();
     } else removeAudioPlayer(player);
   });
   const failed = () => {
     if (state.audio.get(key) !== player) return;
-    removeAudioPlayer(player);
-    say("音频未能播放；可重新开启声音重试。");
+    player._playAttempt = (player._playAttempt || 0) + 1;
+    player._playPending = false;
+    audioFailure(player, player.error);
   };
   player.addEventListener("error", failed);
+  if (event.bus === "bgm") {
+    for (const name of ["loadstart", "waiting", "stalled"]) player.addEventListener(name, () => { player._loading = true; syncBgmStatus(); });
+    for (const name of ["canplay", "playing"]) player.addEventListener(name, () => { player._loading = false; syncBgmStatus(); });
+    player.addEventListener("pause", syncBgmStatus);
+  }
   state.audio.set(key, player);
   if (event.bus === "voice" && !player.loop) {
     player._voiceWait = { pageToken: state.audioPageToken, settled: false, finishedAt: 0, timer: 0, lastTime: -1 };
-    state.voiceWait = player._voiceWait;
+    if (!state.muted && !state.audioSuspended) state.voiceWait = player._voiceWait;
     for (const eventName of ["playing", "timeupdate", "waiting", "stalled"]) {
       player.addEventListener(eventName, () => watchVoiceProgress(player));
     }
-    watchVoiceProgress(player);
   }
   fadeAudioPlayer(player, audioVolume(event.volume, audioVolume(asset.volume)), event.fadeMs);
-  try { Promise.resolve(player.play()).catch(failed); } catch { failed(); }
+  startAudioPlayer(player);
   return player;
 }
 
@@ -358,14 +508,19 @@ function bgmSnapshotEvent(page, previous = null) {
 
 function enforceBgm(page) {
   const current = state.audio.get("bgm");
-  const before = current ? { assetId: current._assetId, volume: current._targetVolume, loop: current.loop } : null;
+  const before = current ? { assetId: current._assetId, volume: current._targetVolume, loop: current.loop } : state.bgmIntent;
   const wanted = bgmSnapshotEvent(page, before);
-  if (wanted === undefined) return;
+  if (wanted === undefined) { recoverBgm(); return; }
   if (!wanted) {
-    if (current && !current._stopping) stopBus("bgm");
+    if (state.bgmIntent || current && !current._stopping) stopBus("bgm");
     return;
   }
-  if (current?._assetId === wanted.assetId) { synchronizeAudioPlayer(current, wanted); return; }
+  if (state.bgmIntent?.assetId === wanted.assetId) {
+    state.bgmIntent = { ...state.bgmIntent, ...wanted };
+    if (current) synchronizeAudioPlayer(current, wanted);
+    recoverBgm();
+    return;
+  }
   playAudioEvent(wanted);
 }
 
@@ -918,15 +1073,14 @@ function syncSoundButton() {
 el.sound.addEventListener("click", () => {
   state.muted = !state.muted;
   syncSoundButton();
-  if (state.muted) {
-    stopAllAudio();
+  for (const player of state.audio.values()) {
+    player.muted = state.muted;
+    if (state.muted) settleVoiceWait(player);
+    else startAudioPlayer(player);
   }
-  else if (currentPage()) {
-    restoreBgm(state.scene, state.pageIndex, true);
-    restoreAuxiliaryAudio(state.scene, state.pageIndex);
-    processPageAudio(currentPage());
-    renderPageDetails(currentPage());
-  }
+  if (!state.muted) recoverBgm({ userInitiated: true });
+  syncBgmStatus();
+  if (currentPage()) renderPageDetails(currentPage());
   if (state.auto) scheduleAuto();
 });
 function setMasterVolume(bus, input, output, storageKey) {
@@ -936,7 +1090,9 @@ function setMasterVolume(bus, input, output, storageKey) {
   output.textContent = output.value;
   try { localStorage.setItem(storageKey, String(level)); } catch { /* Volume remains available for this session. */ }
   applyMasterVolumes();
+  syncBgmStatus();
 }
+el.bgmRetry.addEventListener("click", () => recoverBgm({ userInitiated: true }));
 el.bgmVolume.value = String(Math.round(masterVolume.bgm * 100));
 el.otherVolume.value = String(Math.round(masterVolume.other * 100));
 setMasterVolume("bgm", el.bgmVolume, el.bgmVolumeValue, "cgscene-volume-bgm");
@@ -944,6 +1100,7 @@ setMasterVolume("other", el.otherVolume, el.otherVolumeValue, "cgscene-volume-ot
 el.bgmVolume.addEventListener("input", () => setMasterVolume("bgm", el.bgmVolume, el.bgmVolumeValue, "cgscene-volume-bgm"));
 el.otherVolume.addEventListener("input", () => setMasterVolume("other", el.otherVolume, el.otherVolumeValue, "cgscene-volume-other"));
 function setMixerOpen(open) {
+  syncBgmStatus();
   el.mixer.hidden = !open;
   el.mixerToggle.setAttribute("aria-expanded", String(open));
 }
@@ -975,15 +1132,17 @@ el.exitFullscreen.addEventListener("click", (event) => {
 });
 
 function syncPanels() {
-  const scenesVisible = mobileLayout.matches ? ui.scenesOpen : !ui.scenesHidden;
+  const fullscreen = document.body.classList.contains("is-fullscreen");
+  const scenesDrawer = mobileLayout.matches && !portraitLibrary.matches;
+  const scenesVisible = !fullscreen && (portraitLibrary.matches || (scenesDrawer ? ui.scenesOpen : !ui.scenesHidden));
   document.body.classList.toggle("scenes-hidden", ui.scenesHidden);
-  document.body.classList.toggle("scenes-open", mobileLayout.matches && ui.scenesOpen);
+  document.body.classList.toggle("scenes-open", scenesDrawer && ui.scenesOpen);
   document.body.classList.toggle("info-open", ui.infoOpen);
   el.scenePanel.inert = !scenesVisible;
   el.scenePanelToggle.setAttribute("aria-expanded", String(scenesVisible));
   el.inspectorPanelToggle.setAttribute("aria-expanded", String(ui.infoOpen));
   el.infoPanel.hidden = !ui.infoOpen;
-  el.backdrop.hidden = !(mobileLayout.matches && ui.scenesOpen || overlayInfo.matches && ui.infoOpen);
+  el.backdrop.hidden = fullscreen || !(scenesDrawer && ui.scenesOpen || overlayInfo.matches && ui.infoOpen);
 }
 function closePanels() { ui.scenesOpen = false; ui.infoOpen = false; syncPanels(); }
 el.scenePanelToggle.addEventListener("click", () => {
@@ -1006,6 +1165,7 @@ el.backdrop.addEventListener("click", () => {
   returnFocus.focus();
 });
 mobileLayout.addEventListener("change", () => { ui.scenesOpen = false; syncPanels(); });
+portraitLibrary.addEventListener("change", () => { ui.scenesOpen = false; syncPanels(); });
 overlayInfo.addEventListener("change", syncPanels);
 function setDialogueVisible(visible) {
   ui.dialogueVisible = visible;
@@ -1018,6 +1178,7 @@ function setDialogueVisible(visible) {
 el.dialogueToggle.addEventListener("click", () => setDialogueVisible(!ui.dialogueVisible));
 function syncFullscreen() {
   const active = document.body.classList.contains("is-fullscreen");
+  syncPanels();
   el.exitFullscreen.hidden = !active;
   if (active && document.activeElement === el.fullscreenView) el.exitFullscreen.focus({ preventScroll: true });
   else if (!active && document.activeElement === el.exitFullscreen) el.fullscreenView.focus({ preventScroll: true });
@@ -1051,10 +1212,32 @@ function handleBack() {
 
 function pauseForBackground() {
   stopAuto();
-  state.muted = true;
-  stopAllAudio();
-  syncSoundButton();
+  if (state.audioSuspended) return;
+  state.audioSuspended = true;
+  for (const player of [...state.audio.values()]) {
+    if (player._stopping) { removeAudioPlayer(player); continue; }
+    cancelAudioFade(player);
+    player._playAttempt = (player._playAttempt || 0) + 1;
+    player._playPending = false;
+    player.pause();
+    settleVoiceWait(player);
+  }
+  syncBgmStatus();
   callNative("setKeepScreenOn", false);
+}
+
+function resumeForForeground() {
+  if (document.hidden) return;
+  const suspended = state.audioSuspended;
+  state.audioSuspended = false;
+  if (suspended) {
+    for (const player of state.audio.values()) {
+      fadeAudioPlayer(player, player._targetVolume, 0);
+      startAudioPlayer(player);
+    }
+  }
+  recoverBgm();
+  callNative("setKeepScreenOn", Boolean(state.data));
 }
 
 window.CGSceneAndroid = {
@@ -1072,7 +1255,7 @@ window.CGSceneAndroid = {
     await openPackage(selected);
   },
   onBackground: pauseForBackground,
-  onForeground() { callNative("setKeepScreenOn", Boolean(state.data)); },
+  onForeground: resumeForForeground,
   onFullscreenChanged(active) {
     document.body.classList.toggle("is-fullscreen", Boolean(active));
     syncFullscreen();
@@ -1082,7 +1265,8 @@ window.CGSceneAndroid = {
 document.addEventListener("visibilitychange", () => {
   if (!nativeHost) return;
   if (document.hidden) pauseForBackground();
-  else callNative("setKeepScreenOn", Boolean(state.data));
+  // Native foreground callback also checks the activity and any active file picker.
+  else callNative("requestForeground");
 });
 
 document.addEventListener("keydown", (event) => {
@@ -1091,6 +1275,9 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "ArrowLeft") { event.preventDefault(); advancePage(-1); }
   if (event.key === "ArrowRight" || event.key === " " && !event.target.closest("button, a")) { event.preventDefault(); advancePage(1); }
 });
+
+document.addEventListener("click", retryBlockedAudio);
+document.addEventListener("keydown", retryBlockedAudio);
 
 syncPanels();
 syncSoundButton();
