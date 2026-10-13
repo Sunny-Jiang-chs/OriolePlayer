@@ -1,0 +1,658 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cgscenestudio.local/schema/cgscene-package-1.1.0.json",
+  "title": "CG Scene Package",
+  "description": "Portable page-based visual novel and static CG preview package. Each page references one final composite image, plain text, entry-time audio events, and optional explicit choices.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "project",
+    "assets",
+    "scenes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        "1.0.0",
+        "1.1.0"
+      ]
+    },
+    "project": {
+      "type": "object",
+      "required": [
+        "id",
+        "title"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "engine": {
+          "type": "string"
+        },
+        "locale": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "assets": {
+      "type": "object",
+      "required": [
+        "visuals",
+        "audio"
+      ],
+      "properties": {
+        "visuals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/visualAsset"
+          }
+        },
+        "audio": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/audioAsset"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/scene"
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "visualAsset": {
+      "type": "object",
+      "required": [
+        "id",
+        "uri",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uri": {
+          "type": "string"
+        },
+        "mimeType": {
+          "type": "string"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": [
+            "available",
+            "missing",
+            "unresolved"
+          ],
+          "description": "available is packaged and resolved; missing is known but absent; unresolved has no playable mapping."
+        },
+        "decoder": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "audioAsset": {
+      "type": "object",
+      "required": [
+        "id",
+        "uri",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uri": {
+          "type": "string"
+        },
+        "mimeType": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0
+        },
+        "volume": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "status": {
+          "enum": [
+            "available",
+            "missing",
+            "unresolved"
+          ],
+          "description": "available is packaged and resolved; missing is known but absent; unresolved has no playable mapping."
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "scene": {
+      "type": "object",
+      "required": [
+        "id",
+        "pages"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/page"
+          }
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "entryPageId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "page": {
+      "description": "One readable page in a linear scene. Rich text, live image layers, and game script execution are outside schema version 1.0.0.",
+      "type": "object",
+      "required": [
+        "id",
+        "order",
+        "text",
+        "visual",
+        "audioEvents",
+        "choices"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "label": {
+          "type": "string"
+        },
+        "presentation": {
+          "description": "When special/unresolved, the generic player displays a black special-performance placeholder instead of the page image.",
+          "type": "object",
+          "required": [
+            "mode",
+            "status"
+          ],
+          "properties": {
+            "mode": {
+              "enum": [
+                "special"
+              ]
+            },
+            "status": {
+              "enum": [
+                "unresolved"
+              ]
+            },
+            "reason": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "text": {
+          "type": "object",
+          "required": [
+            "speaker",
+            "body"
+          ],
+          "properties": {
+            "speaker": {
+              "type": "string"
+            },
+            "body": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "visual": {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "assetId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "role": {
+              "enum": [
+                "event-cg",
+                "background",
+                "standing",
+                "transition",
+                "special-performance",
+                "other"
+              ],
+              "description": "Optional explicit resource role supplied by the adapter; catalog entries do not count as scene CG pages."
+            },
+            "status": {
+              "enum": [
+                "available",
+                "missing",
+                "unresolved"
+              ]
+            },
+            "sourceRef": {
+              "type": "string"
+            },
+            "sourceKind": {
+              "enum": [
+                "page",
+                "inherited",
+                "scene-preview"
+              ],
+              "description": "page is explicitly assigned; inherited carries a prior page visual; scene-preview is not a page visual and requires a special placeholder."
+            }
+          },
+          "additionalProperties": true
+        },
+        "audioState": {
+          "description": "BGM snapshot for page navigation. Omit bgmAssetId to inherit; use null to stop; use an asset ID to select a track.",
+          "type": "object",
+          "properties": {
+            "bgmAssetId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "bgmVolume": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "bgmLoop": {
+              "type": "boolean"
+            },
+            "buses": {
+              "type": "object",
+              "description": "Optional persistent-loop snapshot by bus, excluding main voice and main BGM. An empty object stops previously active persistent buses.",
+              "additionalProperties": {
+                "type": "object",
+                "required": [
+                  "assetId",
+                  "loop"
+                ],
+                "properties": {
+                  "assetId": {
+                    "type": "string"
+                  },
+                  "loop": {
+                    "type": "boolean"
+                  },
+                  "volume": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "audioEvents": {
+          "$ref": "#/$defs/audioEvents"
+        },
+        "choices": {
+          "description": "Explicit page transitions. The adapter resolves game-specific conditions into enabled; the generic player does not evaluate condition.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "enabled"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "condition": {
+                "type": "string"
+              },
+              "targetSceneId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "targetPageId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "targetRef": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "audioEvents": {
+                "$ref": "#/$defs/audioEvents"
+              },
+              "status": {
+                "enum": [
+                  "resolved",
+                  "end",
+                  "unresolved"
+                ]
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "next": {
+          "description": "1.1 explicit successor. A null target ends or suspends the segment; never fall through to the next stored page.",
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/transition"
+            }
+          ]
+        },
+        "seekAudioState": {
+          "description": "Audio baseline only for direct navigation; continuous reading uses events and inherited state.",
+          "type": "object",
+          "properties": {
+            "bgmAssetId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "bgmVolume": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "bgmLoop": {
+              "type": "boolean"
+            },
+            "buses": {
+              "type": "object",
+              "description": "Optional persistent-loop snapshot by bus, excluding main voice and main BGM. An empty object stops previously active persistent buses.",
+              "additionalProperties": {
+                "type": "object",
+                "required": [
+                  "assetId",
+                  "loop"
+                ],
+                "properties": {
+                  "assetId": {
+                    "type": "string"
+                  },
+                  "loop": {
+                    "type": "boolean"
+                  },
+                  "volume": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "onceKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "visual": {
+                "properties": {
+                  "sourceKind": {
+                    "const": "scene-preview"
+                  }
+                },
+                "required": [
+                  "sourceKind"
+                ]
+              }
+            },
+            "required": [
+              "visual"
+            ]
+          },
+          "then": {
+            "properties": {
+              "visual": {
+                "properties": {
+                  "assetId": {
+                    "type": "null"
+                  }
+                }
+              },
+              "presentation": {
+                "required": [
+                  "mode",
+                  "status"
+                ],
+                "properties": {
+                  "mode": {
+                    "const": "special"
+                  },
+                  "status": {
+                    "const": "unresolved"
+                  }
+                }
+              }
+            },
+            "required": [
+              "presentation"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": true
+    },
+    "audioEvents": {
+      "description": "Ordered sound actions processed when the page is entered. The generic player does not execute sourceTiming as a timeline.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "action",
+          "bus"
+        ],
+        "properties": {
+          "action": {
+            "enum": [
+              "play",
+              "stop",
+              "volume"
+            ]
+          },
+          "bus": {
+            "type": "string"
+          },
+          "assetId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "loop": {
+            "type": "boolean"
+          },
+          "wait": {
+            "type": "boolean"
+          },
+          "volume": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "fadeMs": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Fade duration for play, stop, or volume adjustment. Omit for immediate application."
+          },
+          "sourceTiming": {
+            "type": "integer",
+            "description": "Optional adapter metadata; not a generic scheduling instruction."
+          },
+          "onceKey": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Play at most once per key in the current preview run; reset on direct seeking."
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "transition": {
+      "type": "object",
+      "required": [
+        "targetPageId"
+      ],
+      "properties": {
+        "targetSceneId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "targetPageId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "resolved",
+            "end",
+            "unresolved",
+            "choice"
+          ]
+        },
+        "audioEvents": {
+          "$ref": "#/$defs/audioEvents"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "const": "1.1.0"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "scenes": {
+            "items": {
+              "properties": {
+                "pages": {
+                  "items": {
+                    "required": [
+                      "next"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

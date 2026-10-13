@@ -1,0 +1,185 @@
+{
+  "schemaVersion": "1.0.0",
+  "project": {
+    "id": "author-example",
+    "title": "最后一班渡船",
+    "engine": "cgscene",
+    "locale": "zh-CN",
+    "description": "独立创作样例；所有图片与声音由本地代码合成。"
+  },
+  "assets": {
+    "visuals": [
+      {
+        "id": "station-day",
+        "uri": "media/station-day.png",
+        "mimeType": "image/png",
+        "width": 1280,
+        "height": 720,
+        "status": "available"
+      },
+      {
+        "id": "station-evening",
+        "uri": "media/station-evening.png",
+        "mimeType": "image/png",
+        "width": 1280,
+        "height": 720,
+        "status": "available"
+      }
+    ],
+    "audio": [
+      {
+        "id": "quiet-platform",
+        "uri": "media/quiet-platform.wav",
+        "name": "候船台",
+        "mimeType": "audio/wav",
+        "duration": 4.0,
+        "status": "available"
+      },
+      {
+        "id": "arrival",
+        "uri": "media/arrival.wav",
+        "name": "抵达铃声",
+        "mimeType": "audio/wav",
+        "duration": 0.24,
+        "status": "available"
+      }
+    ]
+  },
+  "scenes": [
+    {
+      "id": "platform",
+      "title": "候船台",
+      "category": "开场",
+      "pages": [
+        {
+          "id": "platform-01",
+          "order": 0,
+          "text": {
+            "speaker": "旁白",
+            "body": "午后的渡口很安静。她把未寄出的信放进口袋，坐在窗边等候。"
+          },
+          "visual": {
+            "assetId": "station-day",
+            "status": "available"
+          },
+          "audioEvents": [
+            {
+              "action": "play",
+              "bus": "bgm",
+              "assetId": "quiet-platform",
+              "loop": true,
+              "wait": false,
+              "volume": 0.45
+            }
+          ],
+          "choices": []
+        },
+        {
+          "id": "platform-02",
+          "order": 1,
+          "text": {
+            "speaker": "林",
+            "body": "铃声响了。最后一班船已经靠岸，你愿意一起过去吗？"
+          },
+          "visual": {
+            "assetId": "station-day",
+            "status": "available"
+          },
+          "audioEvents": [
+            {
+              "action": "play",
+              "bus": "sfx",
+              "assetId": "arrival",
+              "loop": false,
+              "wait": false,
+              "volume": 0.7
+            }
+          ],
+          "choices": [
+            {
+              "label": "一起登船",
+              "enabled": true,
+              "targetSceneId": "crossing",
+              "targetPageId": "crossing-01"
+            },
+            {
+              "label": "留在窗边",
+              "enabled": true,
+              "targetSceneId": "waiting",
+              "targetPageId": "waiting-01"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "crossing",
+      "title": "出发",
+      "category": "结尾",
+      "pages": [
+        {
+          "id": "crossing-01",
+          "order": 0,
+          "text": {
+            "speaker": "旁白",
+            "body": "夕阳落在水面上。她终于把信递了出去，渡船缓缓离开岸边。"
+          },
+          "visual": {
+            "assetId": "station-evening",
+            "status": "available"
+          },
+          "audioEvents": [],
+          "choices": [
+            {
+              "label": "回到候船台",
+              "enabled": true,
+              "targetSceneId": "platform",
+              "targetPageId": "platform-01"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "waiting",
+      "title": "留下",
+      "category": "结尾",
+      "pages": [
+        {
+          "id": "waiting-01",
+          "order": 0,
+          "text": {
+            "speaker": "旁白",
+            "body": "暮色填满了窗框。她把信摊在桌上，写下了新的第一句话。"
+          },
+          "visual": {
+            "assetId": "station-evening",
+            "status": "available"
+          },
+          "audioEvents": [
+            {
+              "action": "stop",
+              "bus": "bgm",
+              "assetId": null,
+              "loop": false,
+              "wait": false,
+              "volume": 1
+            }
+          ],
+          "choices": [
+            {
+              "label": "回到候船台",
+              "enabled": true,
+              "targetSceneId": "platform",
+              "targetPageId": "platform-01"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "source": {
+    "kind": "authored",
+    "generator": "build_example.py"
+  }
+}

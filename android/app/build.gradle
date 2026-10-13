@@ -1,0 +1,79 @@
+import groovy.json.JsonOutput
+
+apply plugin: 'com.android.application'
+
+def studioRoot = rootProject.projectDir.parentFile
+def generatedWebAssets = layout.buildDirectory.dir('generated/webAssets')
+
+android {
+    namespace 'com.cgscenestudio.player'
+    compileSdk 36
+    buildToolsVersion '36.1.0'
+
+    defaultConfig {
+        applicationId 'com.cgscenestudio.player'
+        minSdk 26
+        targetSdk 36
+        versionCode 2
+        versionName '0.2.0'
+        testInstrumentationRunner 'com.cgscenestudio.player.SmokeInstrumentation'
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+        }
+        release {
+            debuggable false
+            minifyEnabled false
+            // Local installation build. Replace with a private release key before distribution.
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    // This target is a local preview build. Standalone lint can be run after its tooling is installed.
+    lint {
+        checkReleaseBuilds false
+    }
+
+    sourceSets {
+        main.assets.srcDir generatedWebAssets
+    }
+
+    androidResources {
+        noCompress += ['wav', 'mp3', 'ogg', 'm4a', 'bin', 'hidc']
+    }
+}
+
+tasks.register('syncWebAssets', Sync) {
+    description = 'Bundle the common player and the small author example only.'
+    into generatedWebAssets.map { it.dir('web') }
+    from(studioRoot) {
+        include 'index.html'
+        include 'player/**'
+        include 'datasets/example/package.json'
+        include 'datasets/example/media/**'
+        exclude '**/__pycache__/**'
+        exclude '**/*.pyc'
+    }
+    doLast {
+        def indexFile = generatedWebAssets.get().file('web/datasets/index.json').asFile
+        indexFile.parentFile.mkdirs()
+        indexFile.setText(JsonOutput.prettyPrint(JsonOutput.toJson([
+            packages: [[id: 'example', title: '创作者模板', uri: './example/package.json']]
+        ])) + '\n', 'UTF-8')
+    }
+}
+
+tasks.named('preBuild').configure {
+    dependsOn tasks.named('syncWebAssets')
+}

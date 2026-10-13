@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#171a1d">
+  <title>黄鹂播放器</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./player/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="黄鹂播放器首页"><span class="brand-mark">黄鹂</span><span>播放器</span></a>
+    <div class="project-name"><span id="project-title">正在载入数据包</span><span id="project-meta" class="muted"></span></div>
+    <div class="top-actions">
+      <select id="package-select" class="package-select" aria-label="数据包"><option value="">数据包</option></select>
+      <label class="icon-button" title="打开数据包目录" aria-label="打开数据包目录"><i data-lucide="folder-open"></i><input id="package-folder" type="file" webkitdirectory directory multiple hidden></label>
+    </div>
+  </header>
+  <main class="app-shell">
+    <aside id="scene-panel" class="scene-rail" aria-label="场景导航">
+      <div class="rail-heading"><span>场景 <span id="scene-count" class="count">0</span></span><div class="rail-actions"><button id="locate-scene" class="tool-button" type="button" title="定位当前场景" aria-label="定位当前场景"><i data-lucide="locate-fixed"></i></button><button id="scene-close" class="tool-button" type="button" title="关闭场景列表" aria-label="关闭场景列表"><i data-lucide="x"></i></button></div></div>
+      <div class="scene-filters">
+        <label class="search-wrap"><i data-lucide="search" aria-hidden="true"></i><input id="scene-search" type="search" placeholder="搜索场景" aria-label="搜索场景"></label>
+        <select id="scene-category" aria-label="场景分类"><option value="">全部分类</option></select>
+        <label class="filter-check"><input id="scene-visual-only" type="checkbox"><span>仅含画面</span></label>
+        <label class="filter-check event-cg-filter"><input id="scene-event-cg-only" type="checkbox" disabled><span>仅含事件CG</span></label>
+      </div>
+      <div id="scene-list" class="scene-list" role="listbox" aria-label="场景"></div>
+      <div class="rail-footer"><span id="package-status">准备中</span><span id="asset-count"></span></div>
+    </aside>
+    <section class="reviewer">
+      <div class="viewer-toolbar">
+        <div class="page-location"><strong id="scene-heading">选择一个场景</strong><span id="page-position" class="muted"></span></div>
+        <div class="toolbar-actions">
+          <button id="scene-panel-toggle" class="tool-button" type="button" title="场景列表" aria-label="场景列表" aria-controls="scene-panel" aria-expanded="true"><i data-lucide="panel-left"></i></button>
+          <button id="inspector-panel-toggle" class="tool-button" type="button" title="页面信息" aria-label="页面信息" aria-controls="info-panel" aria-expanded="false"><i data-lucide="info"></i></button>
+          <button id="dialogue-toggle" class="tool-button" type="button" title="隐藏对白" aria-label="隐藏对白" aria-pressed="false"><i data-lucide="message-square"></i></button>
+          <button id="sound-toggle" class="tool-button" type="button" title="开启声音" aria-label="开启声音"><i data-lucide="volume-x"></i></button>
+          <div class="mixer-wrap">
+            <button id="mixer-toggle" class="tool-button" type="button" title="音量设置" aria-label="音量设置" aria-expanded="false" aria-controls="audio-mixer"><i data-lucide="sliders-horizontal"></i></button>
+            <section id="audio-mixer" class="audio-mixer" aria-label="音量设置" hidden>
+              <label class="mixer-row"><span>背景音乐 <output id="bgm-volume-value" for="bgm-volume">100%</output></span><input id="bgm-volume" type="range" min="0" max="100" step="1" value="100" aria-label="背景音乐音量"></label>
+              <label class="mixer-row"><span>音效与语音 <output id="other-volume-value" for="other-volume">100%</output></span><input id="other-volume" type="range" min="0" max="100" step="1" value="100" aria-label="音效与语音音量"></label>
+            </section>
+          </div>
+          <button id="auto-toggle" class="tool-button labeled" type="button" title="自动推进"><i data-lucide="play"></i><span>自动</span></button>
+          <button id="fullscreen-view" class="tool-button" type="button" title="全屏预览" aria-label="全屏预览"><i data-lucide="maximize"></i></button>
+        </div>
+      </div>
+      <div id="stage" class="stage" title="下一页">
+        <button id="exit-fullscreen" class="tool-button fullscreen-exit" type="button" title="退出全屏" aria-label="退出全屏" hidden><i data-lucide="minimize"></i></button>
+        <div id="visual-frame" class="visual-frame">
+        <img id="still-image" alt="当前页面画面" hidden>
+        <canvas id="decoded-image" hidden></canvas>
+        <div id="stage-placeholder" class="stage-placeholder"><i data-lucide="image" class="placeholder-icon"></i><span>画面尚未载入</span></div>
+        <div id="image-note" class="image-note" hidden></div>
+        <div id="special-placeholder" class="special-placeholder" role="status" hidden><i data-lucide="clapperboard"></i><strong>特殊演出</strong><span>演出画面暂未还原</span><small id="special-reason"></small></div>
+        <section id="dialogue" class="dialogue" aria-live="polite">
+          <div class="dialogue-header"><span id="speaker"></span><span id="page-label" class="muted"></span></div>
+          <p id="dialogue-text" class="dialogue-text">载入数据包后，场景会显示在这里。</p>
+          <div id="choices" class="choices" hidden></div>
+        </section>
+        </div>
+      </div>
+      <footer class="transport">
+        <button id="previous" class="nav-button" type="button" title="上一页"><i data-lucide="arrow-left"></i><span>上一页</span></button>
+        <button id="first-event-cg" class="nav-button" type="button" title="跳至首张CG" aria-label="跳至首张CG" hidden><i data-lucide="image"></i><span>跳至首张CG</span></button>
+        <input id="page-slider" type="range" min="0" max="0" value="0" aria-label="页面位置">
+        <label class="page-jump"><input id="page-number" type="number" min="1" max="1" value="1" aria-label="跳转到页码"><span id="page-total">/ 0</span></label>
+        <button id="next" class="nav-button primary" type="button" title="下一页"><span>下一页</span><i data-lucide="arrow-right"></i></button>
+      </footer>
+    </section>
+    <aside id="info-panel" class="inspector" aria-label="页面信息" hidden>
+      <div class="inspector-heading"><span>页面信息</span><span id="page-status" class="status-dot">待载入</span><button id="info-close" class="tool-button" type="button" title="关闭页面信息" aria-label="关闭页面信息"><i data-lucide="x"></i></button></div>
+      <dl class="details">
+        <div><dt>场景</dt><dd id="detail-scene">—</dd></div>
+        <div><dt>页面</dt><dd id="detail-page">—</dd></div>
+        <div><dt>画面引用</dt><dd id="detail-visual">—</dd></div>
+        <div><dt>画面类型</dt><dd id="detail-visual-role">—</dd></div>
+        <div><dt>背景音乐</dt><dd id="detail-bgm">—</dd></div>
+        <div><dt>立绘状态</dt><dd id="detail-standing">—</dd></div>
+      </dl>
+      <div class="inspector-section"><div class="section-title">声音事件</div><ol id="audio-events" class="event-list"><li class="muted">无</li></ol></div>
+      <div class="inspector-section"><div class="section-title">数据来源</div><p id="source-note" class="source-note">—</p></div>
+    </aside>
+  </main>
+  <button id="panel-backdrop" class="panel-backdrop" type="button" aria-label="关闭侧栏" hidden></button>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="./player/vendor/lucide.min.js"></script>
+  <script type="module" src="./player/app.js"></script>
+</body>
+</html>
