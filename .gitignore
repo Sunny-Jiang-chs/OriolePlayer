@@ -37,6 +37,9 @@
 /scripts/*
 !/scripts/package-dataset.py
 !/scripts/package-release.py
+!/scripts/artifact_store.py
+!/scripts/artifact_store_test.py
+!/docs/VERSIONS.md
 /datasets/*
 !/datasets/index.json
 !/datasets/example/

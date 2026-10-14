@@ -103,6 +103,8 @@ python scripts/package-dataset.py --input datasets/my-project --output dist/pack
 
 修改网页后可直接重新加载桌面预览；Android 版需重新构建。Windows 双击 `Build-Android.cmd`，或使用 `build-android.ps1`。`Start-Android.cmd` 用于已配置 Android SDK 与 AVD 的开发电脑：先增量构建当前 debug 预览包，再启动模拟器、安装并打开播放器；若确认包已是最新，可传 `-SkipBuild` 跳过构建。
 
+本地安装入口统一在 **`dist/latest/`**。旧包自动移入 `dist/archive/<版本>/<构建ID>/`，不会被新构建覆盖；每份包附有 Git 提交号、构建时间、未提交状态和 SHA256。源码变更后只构建 Debug 时，旧 Release 会移出当前入口，避免混用。构建需 Python 3.10+ 与 Git；详见 [版本与构建管理](docs/VERSIONS.md)。
+
 第三方组件及其许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。本次 APK 沿用本地开发签名与应用标识，方便已有安装覆盖升级；它不是应用商店发布签名配置。
 
 ## 在桌面筛选与重新导出

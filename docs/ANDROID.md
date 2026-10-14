@@ -70,13 +70,16 @@ OGG 模式使用 Vorbis q4 有损压缩，只生成副本，不修改源包；�
 
 构建使用 SDK 自带的 `aapt2`，将播放器和 `datasets/example` 复制到生成的 assets，不扫描或打包其他数据包。修改网页后重新构建即可更新手机播放器。当前构建关闭自动 Release Lint；工具齐全后可单独执行 Gradle `lint`。
 
-输出在 `dist/android/`：
+构建需要 Python 3.10+ 与 Git，用于记录源码和检查安装包；输出在 `dist/latest/`：
 
 | 文件 | 用途 |
 | --- | --- |
 | `HuangliPlayer-0.2.5-debug.apk` | 可连接 WebView 调试器的调试版 |
 | `HuangliPlayer-0.2.5-release.apk` | 关闭调试的安装版 |
 | `*.sha256` | 对应 APK 的 SHA-256 校验值 |
+| `*.build.json` | Git 提交号、源码指纹、构建时间及文件校验值 |
+
+旧产物自动归档至 `dist/archive/<版本>/<构建ID>/`。`-SkipBuild` 会检查当前源码和 APK 校验值，不再按文件时间选择安装包。完整规则见 [版本与构建管理](VERSIONS.md)。
 
 当前两种配置沿用本机 Android 开发签名。应用标识继续使用 `com.cgscenestudio.player`，以兼容已有安装；应用显示名称为 **黄鹂播放器**。版本号为 0.2.5。Release APK 可直接安装，但该签名配置不属于应用商店发布方案；自行构建与已有安装签名不同时，Android 不允许直接覆盖。
 
@@ -87,7 +90,7 @@ OGG 模式使用 Vorbis q4 有损压缩，只生成副本，不修改源包；�
 也可使用已加入 PATH 的 adb 安装：
 
 ```powershell
-adb install -r .\dist\android\HuangliPlayer-0.2.5-debug.apk
+adb install -r .\dist\latest\HuangliPlayer-0.2.5-debug.apk
 ```
 
 日常修改先用内置示例检查载入、翻页、自动推进、对白、音量、全屏及横竖屏布局，再导入自己的作品核对素材与声音。Android 模拟器的结构性检查不能代替实体手机的触控体验与实际声音试听。

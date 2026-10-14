@@ -12,7 +12,15 @@ param(
 $ErrorActionPreference = 'Stop'
 $projectPath = $PSScriptRoot
 $androidPath = Join-Path $projectPath 'android'
-$outputPath = Join-Path $projectPath 'dist\android'
+$artifactTool = Join-Path $projectPath 'scripts\artifact_store.py'
+$buildId = (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + [guid]::NewGuid().ToString('N').Substring(0,8)
+$outputPath = Join-Path $projectPath "tmp\android-build-$buildId"
+$buildSnapshot = Join-Path $outputPath 'source.json'
+New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
+& python $artifactTool begin --output $buildSnapshot
+if ($LASTEXITCODE -ne 0) { throw 'Could not record build source. Python 3.10+ and Git are required.' }
+$sourceState = Get-Content -LiteralPath $buildSnapshot -Raw | ConvertFrom-Json
+$version = $sourceState.version
 
 if (-not (Test-Path -LiteralPath (Join-Path $SdkPath 'platforms\android-36\android.jar'))) {
     throw "Android SDK 36 not found: $SdkPath. Install platforms;android-36 and build-tools;36.1.0 in D:\tools, or pass -SdkPath."
@@ -64,9 +72,6 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Android build failed with exit code $LASTEXITCODE." }
 
     New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
-    $versionMatch = [regex]::Match([System.IO.File]::ReadAllText((Join-Path $androidPath 'app\build.gradle')), "versionName\s+'([^']+)'")
-    if (-not $versionMatch.Success) { throw 'Cannot read versionName from android/app/build.gradle.' }
-    $version = $versionMatch.Groups[1].Value
     $variants = if ($Variant -eq 'Both') { @('debug', 'release') } else { @($Variant.ToLowerInvariant()) }
     foreach ($buildVariant in $variants) {
         $sourceApk = Join-Path $androidPath "app\build\outputs\apk\$buildVariant\app-$buildVariant.apk"
@@ -75,7 +80,10 @@ try {
         Copy-Item -LiteralPath $sourceApk -Destination $targetApk -Force
         $hash = (Get-FileHash -LiteralPath $targetApk -Algorithm SHA256).Hash.ToLowerInvariant()
         [System.IO.File]::WriteAllText("$targetApk.sha256", "$hash  $([System.IO.Path]::GetFileName($targetApk))`n", [System.Text.UTF8Encoding]::new($false))
-        Write-Host "APK: $targetApk"
+        & python $artifactTool publish --snapshot $buildSnapshot --artifact $targetApk --artifact "$targetApk.sha256" `
+            --record "HuangliPlayer-$version-$buildVariant.build.json" --kind "android-$buildVariant"
+        if ($LASTEXITCODE -ne 0) { throw 'Could not publish this build to dist\latest. See the error above.' }
+        Write-Host "APK: $(Join-Path $projectPath "dist\latest\HuangliPlayer-$version-$buildVariant.apk")"
         Write-Host "SHA256: $hash"
     }
     Write-Host 'Release is signed with the local Android development key for direct installation; it is not a store release.'
