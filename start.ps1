@@ -10,6 +10,7 @@ function Get-StudioStatus([int]$CandidatePort) {
     try {
         $taskStatus = Invoke-RestMethod -Uri "http://127.0.0.1:$CandidatePort/__cgscene_status" -TimeoutSec 1
         if ($taskStatus.app -eq 'cg-scene-studio' -and
+            $taskStatus.integrationVersion -eq 1 -and
             $taskStatus.root.TrimEnd([char[]]'\/') -eq $taskProjectRoot) {
             return $taskStatus
         }

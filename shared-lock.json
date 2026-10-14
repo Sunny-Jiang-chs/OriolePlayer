@@ -1,0 +1,23 @@
+{
+  "lockVersion": 1,
+  "package": "@cgscene/kit",
+  "version": "0.1.0",
+  "files": {
+    "src/package-model.js": {
+      "target": "player/vendor/cgscene/package-model.js",
+      "sha256": "65105c3a14a74076ccc06834f9e1571058fee6762c4afa74ba6eb0ac82458bcb"
+    },
+    "src/package-utils.js": {
+      "target": "player/vendor/cgscene/package-utils.js",
+      "sha256": "675722310a7e5570ef191458615eb1d4d06a197facf17f6a91cf501f9b599754"
+    },
+    "schema/cgscene-package.schema.json": {
+      "target": "schema/cgscene-package.schema.json",
+      "sha256": "c5d8df4914a02b4396e364f2574cedf25388a269c5894e30c98e265dc9428c39"
+    },
+    "schema/README.md": {
+      "target": "schema/README.md",
+      "sha256": "ad9730748474825ac75cb027ed5680873032b86581a8ea88813c5bc097cd348a"
+    }
+  }
+}

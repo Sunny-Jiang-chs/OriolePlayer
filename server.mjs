@@ -1,10 +1,20 @@
 import http from "node:http";
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { stat, realpath } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
+// Optional local integration. Neither the player nor its release needs this sibling project.
+const parsersRoot = path.resolve(root, "../CGSceneParsers");
+const organizerEntry = path.join(parsersRoot, "organizer/index.html");
+async function organizerAvailable() {
+  try { return (await stat(organizerEntry)).isFile(); } catch { return false; }
+}
+function inside(base, filename) {
+  const relative = path.relative(base, filename);
+  return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
 const portArgument = process.argv.indexOf('--port');
 const port = Number(portArgument >= 0 ? process.argv[portArgument + 1] : process.env.PORT || 8768);
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".ogg": "audio/ogg", ".wav": "audio/wav", ".mp3": "audio/mpeg" };
@@ -14,14 +24,19 @@ const server = http.createServer(async (request, response) => {
     if (!["GET", "HEAD"].includes(request.method)) { response.writeHead(405); response.end(); return; }
     const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
     if (pathname === '/__cgscene_status') {
-      const body = JSON.stringify({ app: 'cg-scene-studio', root, pid: process.pid });
+      const body = JSON.stringify({ app: 'cg-scene-studio', root, pid: process.pid,
+        integrationVersion: 1, organizer: await organizerAvailable() ? { url: '/organizer/index.html' } : null });
       response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(body) });
       response.end(request.method === 'HEAD' ? undefined : body);
       return;
     }
-    const filename = path.resolve(root, `.${pathname === "/" ? "/index.html" : pathname}`);
-    const relative = path.relative(root, filename);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) { response.writeHead(403); response.end(); return; }
+    // Only these two directories are mounted; exporters, reports and source games stay outside.
+    const mountedFolder = ['/organizer/', '/vendor/'].find((prefix) => pathname.startsWith(prefix));
+    const base = mountedFolder ? path.join(parsersRoot, mountedFolder.slice(1, -1)) : root;
+    const requested = mountedFolder ? pathname.slice(mountedFolder.length) : pathname === '/' ? 'index.html' : pathname.slice(1);
+    const filename = path.resolve(base, requested);
+    if (!inside(base, filename)) { response.writeHead(403); response.end(); return; }
+    if (!inside(await realpath(base), await realpath(filename))) { response.writeHead(403); response.end(); return; }
     const info = await stat(filename);
     if (!info.isFile()) { response.writeHead(404); response.end(); return; }
     const headers = { "Content-Type": types[path.extname(filename).toLowerCase()] || "application/octet-stream", "Accept-Ranges": "bytes", "Cache-Control": "no-cache" };

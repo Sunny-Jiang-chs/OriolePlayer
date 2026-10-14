@@ -9,6 +9,9 @@
 !/server.mjs
 !/Start.cmd
 !/start.ps1
+!/Start-Organizer.cmd
+!/start-organizer.ps1
+!/shared-lock.json
 !/Start-Android.cmd
 !/start-android.ps1
 !/Build-Android.cmd
@@ -19,9 +22,18 @@
 !/scripts/
 !/android/
 !/datasets/
+!/assets/
+
+/assets/*
+!/assets/branding/
+/assets/branding/*
+!/assets/branding/huangli-player-icon-v1.png
+!/assets/branding/huangli-player-icon-v1.prompt.txt
+!/assets/branding/README.md
 
 /docs/*
 !/docs/ANDROID.md
+!/docs/ARCHITECTURE.md
 /scripts/*
 !/scripts/package-dataset.py
 !/scripts/package-release.py
