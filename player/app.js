@@ -19,6 +19,7 @@ const el = {
   sound: $("sound-toggle"), mixerToggle: $("mixer-toggle"), mixer: $("audio-mixer"),
   bgmVolume: $("bgm-volume"), bgmVolumeValue: $("bgm-volume-value"), otherVolume: $("other-volume"), otherVolumeValue: $("other-volume-value"),
   bgmStatus: $("bgm-status"), bgmRetry: $("bgm-retry"),
+  dialogueTransparency: $("dialogue-transparency"), dialogueTransparencyValue: $("dialogue-transparency-value"), fastForwardIndicator: $("fast-forward-indicator"),
   auto: $("auto-toggle"), fullscreenView: $("fullscreen-view"), exitFullscreen: $("exit-fullscreen"),
   scenePanelToggle: $("scene-panel-toggle"), inspectorPanelToggle: $("inspector-panel-toggle"), status: $("page-status"),
   scenePanel: $("scene-panel"), sceneClose: $("scene-close"), infoPanel: $("info-panel"), infoClose: $("info-close"), backdrop: $("panel-backdrop"),
@@ -35,6 +36,7 @@ const state = {
 state.audioOnceKeys = new Set();
 state.readingHistory = [];
 const ui = { scenesHidden: false, scenesOpen: false, infoOpen: false, dialogueVisible: true };
+const hold = { pointerId: null, timer: 0, active: false, x: 0, y: 0, suppressClick: false };
 const mobileLayout = matchMedia("(max-width: 760px), (pointer: coarse) and (max-height: 600px)");
 const portraitLibrary = matchMedia("(max-width: 760px) and (orientation: portrait)");
 const overlayInfo = matchMedia("(max-width: 1120px), (pointer: coarse) and (max-height: 600px)");
@@ -103,12 +105,75 @@ function currentPage() {
   return state.scene?.pages?.[state.pageIndex] || null;
 }
 
+const thumbnailLoaders = new WeakMap();
+let thumbnailObserver = null;
+
+function firstScenePreview(scene) {
+  if (scene.source?.catalog) return null;
+  const availableAsset = (page) => page?.presentation?.mode !== "special"
+    && page?.visual?.status === "available" && page.visual.assetId
+    && state.data.assets.visualById.get(page.visual.assetId)?.status === "available";
+  if (scene.eventCgPages > 0) {
+    const page = scene.pages[scene.firstEventCgPageIndex];
+    if (availableAsset(page)) return { asset: state.data.assets.visualById.get(page.visual.assetId), verified: true };
+  }
+  if (scene.eventCgKnown) return null;
+  const page = scene.pages.find(availableAsset);
+  return page ? { asset: state.data.assets.visualById.get(page.visual.assetId), verified: false } : null;
+}
+
+async function loadSceneThumbnail(thumb, asset, source) {
+  if (source !== state.source || !thumb.isConnected) return;
+  try {
+    const uri = source.resolve(asset.uri);
+    if (asset.decoder?.id) {
+      const decoder = await getDecoder(asset.decoder.id);
+      const response = await fetch(uri);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (source !== state.source || !thumb.isConnected) return;
+      const full = document.createElement("canvas");
+      decoder.render(bytes, asset.decoder, full);
+      if (!full.width || !full.height) throw new Error("空画面");
+      const scale = Math.min(160 / full.width, 108 / full.height);
+      const preview = document.createElement("canvas");
+      preview.width = Math.max(1, Math.round(full.width * scale));
+      preview.height = Math.max(1, Math.round(full.height * scale));
+      preview.getContext("2d").drawImage(full, 0, 0, preview.width, preview.height);
+      thumb.replaceChildren(preview);
+    } else {
+      const image = new Image();
+      image.alt = "";
+      image.decoding = "async";
+      image.onload = () => { if (source === state.source && thumb.isConnected) thumb.replaceChildren(image); };
+      image.onerror = () => { if (source === state.source && thumb.isConnected) thumb.textContent = "预览失败"; };
+      image.src = uri;
+    }
+  } catch {
+    if (source === state.source && thumb.isConnected) thumb.textContent = "预览失败";
+  }
+}
+
 function sceneButton(scene) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "scene-item";
   button.setAttribute("role", "option");
   button.setAttribute("aria-selected", String(scene.id === state.scene?.id));
+  const thumbnail = document.createElement("span");
+  thumbnail.className = "scene-thumbnail";
+  thumbnail.setAttribute("aria-hidden", "true");
+  const preview = firstScenePreview(scene);
+  thumbnail.textContent = preview ? "载入中" : scene.source?.catalog ? "素材目录"
+    : scene.eventCgPages > 0 ? "CG 未就绪" : scene.eventCgKnown ? "无 CG" : "无预览";
+  if (preview) {
+    thumbnail.title = preview.verified ? "首张事件 CG" : "首张可用画面；是否属于 CG 待核对";
+    const source = state.source;
+    thumbnailLoaders.set(thumbnail, () => loadSceneThumbnail(thumbnail, preview.asset, source));
+    if (!preview.verified) thumbnail.classList.add("unverified");
+  }
+  const copy = document.createElement("span");
+  copy.className = "scene-item-copy";
   const title = document.createElement("span");
   title.className = "scene-title";
   title.textContent = scene.title || scene.id;
@@ -118,20 +183,29 @@ function sceneButton(scene) {
   const mapped = scene.mappedPages;
   button.dataset.sceneId = scene.id;
   subtitle.textContent = `${scene.category || "场景"} · ${scene.pages.length} 页 · ${mapped} 画面`;
-  button.append(title, subtitle);
+  copy.append(title, subtitle);
   if (scene.eventCgPages > 0) {
     const eventCg = document.createElement("span");
     eventCg.className = "scene-event-cg";
     const first = scene.firstEventCgPageIndex;
     eventCg.textContent = `事件CG ${scene.eventCgPages} 页 · ${first >= 0 ? `首张第 ${first + 1} 页` : "首张页待核对"}`;
-    button.append(eventCg);
+    copy.append(eventCg);
   }
+  if (preview && !preview.verified) {
+    const unverified = document.createElement("span");
+    unverified.className = "scene-preview-unverified";
+    unverified.textContent = "首张画面 · CG 待核";
+    copy.append(unverified);
+  }
+  button.append(thumbnail, copy);
   button.addEventListener("click", () => selectScene(scene.id));
   return button;
 }
 
 function renderSceneList() {
   if (!state.data) return;
+  thumbnailObserver?.disconnect();
+  thumbnailObserver = null;
   const query = el.search.value.trim().toLocaleLowerCase();
   const scenes = state.data.scenes.filter((scene) =>
     `${scene.id} ${scene.title || ""} ${scene.category || ""}`.toLocaleLowerCase().includes(query)
@@ -147,6 +221,20 @@ function renderSceneList() {
     return;
   }
   el.sceneList.replaceChildren(...scenes.map(sceneButton));
+  const thumbnails = [...el.sceneList.querySelectorAll(".scene-thumbnail")].filter((thumb) => thumbnailLoaders.has(thumb));
+  if ("IntersectionObserver" in window) {
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        observer.unobserve(entry.target);
+        thumbnailLoaders.get(entry.target)?.();
+      }
+    }, { root: el.sceneList, rootMargin: "120px 0px" });
+    thumbnailObserver = observer;
+    for (const thumb of thumbnails) observer.observe(thumb);
+  } else {
+    for (const thumb of thumbnails) thumbnailLoaders.get(thumb)?.();
+  }
 }
 
 function locateCurrentScene() {
@@ -191,8 +279,14 @@ function removeAudioPlayer(player) {
   cancelAudioFade(player);
   player._playAttempt = (player._playAttempt || 0) + 1;
   player._playPending = false;
-  player.pause();
   if (state.audio.get(player._key) === player) state.audio.delete(player._key);
+  clearTimeout(player._playWatchdog);
+  clearTimeout(player._sourceTimer);
+  player._sourceAbort?.abort();
+  player.pause();
+  player.removeAttribute("src");
+  player.load();
+  if (player._objectUrl) URL.revokeObjectURL(player._objectUrl);
   settleVoiceWait(player);
 }
 
@@ -293,10 +387,11 @@ function syncBgmStatus() {
   }
   el.bgmStatus.textContent = label;
   el.bgmStatus.dataset.status = status;
-  el.bgmRetry.disabled = !intent || state.bgmFinished || state.audioSuspended || document.hidden || state.muted || Boolean(player?._playPending);
+  el.bgmRetry.disabled = !intent || state.bgmFinished || state.audioSuspended || document.hidden || state.muted || status === "playing";
 }
 
 function audioFailure(player, error) {
+  clearTimeout(player._playWatchdog);
   player._playAttempt = (player._playAttempt || 0) + 1;
   player._playPending = false;
   const code = Number(error?.code) || 0;
@@ -321,6 +416,12 @@ function recoverBgm({ userInitiated = false } = {}) {
   if (!state.bgmIntent || state.bgmFinished || state.muted || state.audioSuspended || document.hidden) { syncBgmStatus(); return; }
   const current = state.audio.get("bgm");
   if (current) {
+    if (userInitiated && (current._sourcePending || current._playPending || current._loading || current.error || current.readyState < 3)) {
+      const wanted = { ...state.bgmIntent };
+      removeAudioPlayer(current);
+      playAudioEvent({ ...wanted, fadeMs: 0 });
+      return;
+    }
     if (userInitiated) current._retryAfter = 0;
     if (current.paused && (!current._blocked || userInitiated)) startAudioPlayer(current);
   } else if (!state.bgmFailure || userInitiated) {
@@ -344,7 +445,7 @@ function watchVoiceProgress(player) {
 }
 
 function startAudioPlayer(player) {
-  if (state.audio.get(player._key) !== player || state.audioSuspended || document.hidden || player._ended || player._stopping || player._playPending || performance.now() < (player._retryAfter || 0)) return;
+  if (state.audio.get(player._key) !== player || state.audioSuspended || document.hidden || player._sourcePending || player._ended || player._stopping || player._playPending || performance.now() < (player._retryAfter || 0)) return;
   const attempt = (player._playAttempt || 0) + 1;
   player._playAttempt = attempt;
   player._playPending = true;
@@ -359,6 +460,7 @@ function startAudioPlayer(player) {
   }
   const failed = (error) => {
     if (state.audio.get(player._key) !== player || player._playAttempt !== attempt) return;
+    clearTimeout(player._playWatchdog);
     player._playPending = false;
     if (error?.name === "NotAllowedError") {
       // Keep the current BGM/voice until a user gesture unlocks browser playback.
@@ -370,10 +472,21 @@ function startAudioPlayer(player) {
     }
     audioFailure(player, error);
   };
+  if (player._bus === "bgm") {
+    clearTimeout(player._playWatchdog);
+    player._playWatchdog = setTimeout(() => {
+      if (state.audio.get(player._key) === player && player._playAttempt === attempt && player._playPending) {
+        audioFailure(player, { name: "NetworkError", code: 2 });
+      }
+    }, 12000);
+  }
   try {
     if (player.error?.code === 1) player.load();
     Promise.resolve(player.play()).then(() => {
-      if (player._playAttempt === attempt) player._playPending = false;
+      if (player._playAttempt === attempt) {
+        clearTimeout(player._playWatchdog);
+        player._playPending = false;
+      }
       syncBgmStatus();
     }).catch(failed);
   } catch (error) { failed(error); }
@@ -388,8 +501,37 @@ function retryBlockedAudio() {
   recoverBgm();
 }
 
+async function prepareAndroidBgm(player, uri) {
+  // WebView's media loader can stall on intercepted HTTPS audio even when fetch
+  // reads the same file correctly. Keep one Blob URL for the current BGM only.
+  const abort = new AbortController();
+  player._sourceAbort = abort;
+  player._sourceTimer = setTimeout(() => abort.abort(), 15000);
+  try {
+    const response = await fetch(uri, { signal: abort.signal, cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    if (!blob.size) throw new Error("Empty audio file");
+    if (state.audio.get(player._key) !== player) return;
+    player._objectUrl = URL.createObjectURL(blob);
+    player.src = player._objectUrl;
+    player._sourcePending = false;
+    player._loading = true;
+    startAudioPlayer(player);
+  } catch {
+    if (state.audio.get(player._key) === player) {
+      player._sourcePending = false;
+      audioFailure(player, { name: "NetworkError", code: 2 });
+    }
+  } finally {
+    clearTimeout(player._sourceTimer);
+    if (player._sourceAbort === abort) player._sourceAbort = null;
+  }
+}
+
 function playAudioEvent(event) {
   if (event.status === "unresolved") return null;
+  if (hold.active && event.action === "play" && ["voice", "sfx"].includes(event.bus) && !event.loop) return null;
   if (event.action === "stop") {
     stopBus(event.bus, event.fadeMs);
     return null;
@@ -439,7 +581,8 @@ function playAudioEvent(event) {
   }
   let uri;
   try { uri = assetUrl(asset); } catch (error) { say(error.message); return null; }
-  const player = new Audio(uri);
+  const useBlobSource = Boolean(nativeHost) && event.bus === "bgm";
+  const player = useBlobSource ? new Audio() : new Audio(uri);
   player._key = key;
   player._assetId = asset.id;
   player._bus = event.bus;
@@ -449,6 +592,7 @@ function playAudioEvent(event) {
   player._fadeToken = 0;
   player._stopping = false;
   player._ended = false;
+  player._sourcePending = useBlobSource;
   player.muted = state.muted;
   player.loop = event.loop ?? (event.bus === "bgm");
   player._persistent = player.loop && event.bus !== "voice" && event.bus !== "bgm";
@@ -483,7 +627,8 @@ function playAudioEvent(event) {
     }
   }
   fadeAudioPlayer(player, audioVolume(event.volume, audioVolume(asset.volume)), event.fadeMs);
-  startAudioPlayer(player);
+  if (useBlobSource) prepareAndroidBgm(player, uri);
+  else startAudioPlayer(player);
   return player;
 }
 
@@ -797,6 +942,7 @@ function renderPage() {
 
 function selectPage(index, { continueAuto = false } = {}) {
   if (!state.scene || !Number.isFinite(index)) return;
+  if (!continueAuto) stopFastForward({ resume: false });
   if (!continueAuto) stopAuto();
   const nextIndex = Math.max(0, Math.min(Math.round(index), state.scene.pages.length - 1));
   const sequential = nextIndex === state.pageIndex + 1;
@@ -810,6 +956,7 @@ function selectPage(index, { continueAuto = false } = {}) {
 }
 
 function selectScene(id, targetPageId = null) {
+  stopFastForward({ resume: false });
   stopAuto();
   const scene = state.data.scenes.find((item) => item.id === id);
   if (!scene) return;
@@ -838,6 +985,7 @@ function stopAuto() {
 
 function scheduleAuto() {
   clearTimeout(state.autoTimer);
+  if (hold.active) return;
   const page = currentPage();
   if (!state.auto || !page || page.choices.some((choice) => choice.enabled)) { stopAuto(); return; }
   const wait = state.voiceWait;
@@ -865,11 +1013,11 @@ function advancePage(direction) {
       restoreBgm(state.scene, state.pageIndex, true);
       restoreAuxiliaryAudio(state.scene, state.pageIndex);
       renderPage();
-    } else if (state.pageIndex > 0) selectPage(state.pageIndex - 1, { continueAuto: state.auto });
+    } else if (state.pageIndex > 0) selectPage(state.pageIndex - 1, { continueAuto: state.auto || hold.active });
     return;
   }
   const nextIndex = state.pageIndex + direction;
-  if (nextIndex >= 0 && nextIndex < state.scene.pages.length) selectPage(nextIndex, { continueAuto: state.auto });
+  if (nextIndex >= 0 && nextIndex < state.scene.pages.length) selectPage(nextIndex, { continueAuto: state.auto || hold.active });
 }
 
 function followTransition(transition) {
@@ -890,6 +1038,7 @@ function followTransition(transition) {
 }
 
 function usePackage(source) {
+  stopFastForward({ resume: false });
   stopAuto();
   stopAllAudio();
   state.renderToken += 1;
@@ -1029,7 +1178,93 @@ el.pageNumber.addEventListener("change", () => {
 el.pageNumber.addEventListener("keydown", (event) => {
   if (event.key === "Enter") el.pageNumber.blur();
 });
+function stopFastForward({ resume = true } = {}) {
+  clearTimeout(hold.timer);
+  hold.timer = 0;
+  const wasActive = hold.active;
+  const pointerId = hold.pointerId;
+  hold.active = false;
+  hold.pointerId = null;
+  el.fastForwardIndicator.hidden = true;
+  el.dialogue.setAttribute("aria-live", "polite");
+  if (pointerId !== null && el.stage.hasPointerCapture(pointerId)) el.stage.releasePointerCapture(pointerId);
+  if (wasActive && resume && !document.hidden && !state.audioSuspended) {
+    // Resume the current line's voice after skipping past earlier lines.
+    state.audioPageStartedAt = performance.now();
+    for (const event of currentPage()?.audioEvents || []) if (event.bus === "voice") playAudioEvent(event);
+    if (state.auto) scheduleAuto();
+  }
+}
+
+function fastForwardStep() {
+  if (!hold.active) return;
+  const page = currentPage();
+  if (!page || document.hidden || state.audioSuspended || page.choices.length ||
+      (state.data.schemaVersion === "1.1.0" && (!page.next || page.next.status === "end" || page.next.status === "unresolved"))) {
+    stopAuto();
+    stopFastForward();
+    return;
+  }
+  advancePage(1);
+  if (currentPage() === page || currentPage()?.choices.length) {
+    stopAuto();
+    stopFastForward();
+    return;
+  }
+  hold.timer = setTimeout(fastForwardStep, 140);
+}
+
+el.stage.addEventListener("pointerdown", (event) => {
+  if (!event.isPrimary) {
+    hold.suppressClick = true;
+    stopFastForward();
+    return;
+  }
+  if (event.button !== 0 || event.target.closest("button, input, select, a") || !currentPage()) return;
+  stopFastForward();
+  hold.suppressClick = false;
+  hold.pointerId = event.pointerId;
+  hold.x = event.clientX;
+  hold.y = event.clientY;
+  hold.timer = setTimeout(() => {
+    if (hold.pointerId !== event.pointerId || document.hidden || state.audioSuspended) return;
+    hold.active = true;
+    hold.suppressClick = true;
+    clearTimeout(state.autoTimer);
+    stopBus("voice");
+    for (const player of [...state.audio.values()]) {
+      if (player._bus === "sfx" && !player.loop) removeAudioPlayer(player);
+    }
+    el.fastForwardIndicator.hidden = false;
+    el.dialogue.setAttribute("aria-live", "off");
+    el.stage.setPointerCapture(event.pointerId);
+    fastForwardStep();
+  }, 450);
+});
+window.addEventListener("pointermove", (event) => {
+  if (event.pointerId !== hold.pointerId) return;
+  if (Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > 14) {
+    hold.suppressClick = true;
+    stopFastForward();
+  }
+});
+for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
+  window.addEventListener(type, (event) => {
+    if (event.pointerId === hold.pointerId) stopFastForward();
+  });
+}
+window.addEventListener("blur", () => {
+  if (hold.active) stopAuto();
+  stopFastForward({ resume: false });
+});
+el.stage.addEventListener("contextmenu", (event) => { if (!event.target.closest("button, a")) event.preventDefault(); });
+el.stage.addEventListener("dragstart", (event) => event.preventDefault());
 el.stage.addEventListener("click", (event) => {
+  if (hold.suppressClick && !event.target.closest("button, input, select, a")) {
+    hold.suppressClick = false;
+    event.preventDefault();
+    return;
+  }
   if (event.target.closest(".dialogue, button") || currentPage()?.choices.some((choice) => choice.enabled)) return;
   advancePage(1);
 });
@@ -1099,6 +1334,26 @@ setMasterVolume("bgm", el.bgmVolume, el.bgmVolumeValue, "cgscene-volume-bgm");
 setMasterVolume("other", el.otherVolume, el.otherVolumeValue, "cgscene-volume-other");
 el.bgmVolume.addEventListener("input", () => setMasterVolume("bgm", el.bgmVolume, el.bgmVolumeValue, "cgscene-volume-bgm"));
 el.otherVolume.addEventListener("input", () => setMasterVolume("other", el.otherVolume, el.otherVolumeValue, "cgscene-volume-other"));
+function setDialogueTransparency(value) {
+  const transparency = Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : 9;
+  el.dialogueTransparency.value = String(transparency);
+  el.dialogueTransparencyValue.value = `${transparency}%`;
+  el.dialogueTransparencyValue.textContent = `${transparency}%`;
+  document.documentElement.style.setProperty("--dialogue-opacity", String(1 - transparency / 100));
+  try { localStorage.setItem("cgscene-dialogue-transparency", String(transparency)); } catch { /* Applies for this session. */ }
+}
+let dialogueTransparency = 9;
+try {
+  const saved = localStorage.getItem("cgscene-dialogue-transparency");
+  if (saved !== null) dialogueTransparency = Number(saved);
+} catch { /* Use the default if storage is unavailable. */ }
+setDialogueTransparency(dialogueTransparency);
+el.dialogueTransparency.addEventListener("input", () => setDialogueTransparency(Number(el.dialogueTransparency.value)));
+const installedAppVersion = callNative("getAppVersion");
+if (installedAppVersion) {
+  $("app-version").textContent = `黄鹂播放器 ${installedAppVersion}`;
+  $("app-version").hidden = false;
+}
 function setMixerOpen(open) {
   syncBgmStatus();
   el.mixer.hidden = !open;
@@ -1109,6 +1364,7 @@ document.addEventListener("pointerdown", (event) => {
   if (!el.mixer.hidden && !event.target.closest(".mixer-wrap")) setMixerOpen(false);
 });
 async function toggleFullscreen() {
+  stopFastForward();
   closePanels();
   setMixerOpen(false);
   if (nativeHost) {
@@ -1121,7 +1377,13 @@ async function toggleFullscreen() {
   try {
     if (document.fullscreenElement) await document.exitFullscreen();
     else if (document.body.classList.contains("is-fullscreen")) document.body.classList.remove("is-fullscreen");
-    else await document.documentElement.requestFullscreen();
+    else {
+      await document.documentElement.requestFullscreen();
+      if (matchMedia("(pointer: coarse)").matches) {
+        try { await screen.orientation?.lock?.("landscape"); } catch { /* Browser may not support locking orientation. */ }
+        if (!document.fullscreenElement) screen.orientation?.unlock?.();
+      }
+    }
   } catch { document.body.classList.toggle("is-fullscreen"); }
   syncFullscreen();
 }
@@ -1189,11 +1451,14 @@ function syncFullscreen() {
 }
 document.addEventListener("fullscreenchange", () => {
   if (nativeHost) return;
+  stopFastForward();
+  if (!document.fullscreenElement) screen.orientation?.unlock?.();
   document.body.classList.toggle("is-fullscreen", Boolean(document.fullscreenElement));
   syncFullscreen();
 });
 
 function handleBack() {
+  stopFastForward();
   if (!el.mixer.hidden) { setMixerOpen(false); el.mixerToggle.focus(); return true; }
   if (ui.scenesOpen || ui.infoOpen) {
     const returnFocus = ui.scenesOpen ? el.scenePanelToggle : el.inspectorPanelToggle;
@@ -1211,6 +1476,7 @@ function handleBack() {
 }
 
 function pauseForBackground() {
+  stopFastForward({ resume: false });
   stopAuto();
   if (state.audioSuspended) return;
   state.audioSuspended = true;
@@ -1219,6 +1485,7 @@ function pauseForBackground() {
     cancelAudioFade(player);
     player._playAttempt = (player._playAttempt || 0) + 1;
     player._playPending = false;
+    clearTimeout(player._playWatchdog);
     player.pause();
     settleVoiceWait(player);
   }
@@ -1263,6 +1530,10 @@ window.CGSceneAndroid = {
   handleBack
 };
 document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    if (hold.active) stopAuto();
+    stopFastForward({ resume: false });
+  }
   if (!nativeHost) return;
   if (document.hidden) pauseForBackground();
   // Native foreground callback also checks the activity and any active file picker.

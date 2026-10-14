@@ -1,0 +1,9 @@
+Create one finished 1024x1024 square raster app icon for Huangli Player (Oriole Player), using Image 1 as the visual reference for its sibling app, Nightingale Player. The supplied artwork is owned by the user.
+
+Image 1 is a style and product-family reference. Design a matching sibling icon, with the same graceful right-facing bird silhouette, overlapping paper-like wing shapes, understated soft gradients and fine matte texture, dark midnight navy background, and a dark triangular play symbol embedded in the large foreground wing.
+
+For Huangli, use a luminous golden-yellow oriole: pale butter-yellow on the head, rich warm yellow and saffron-gold wings, amber shadow transitions and restrained dark navy detailing. Give the bird one tiny elegant open eye and a small warm coral-orange beak. Behind the bird, replace the crescent moon with a simple pale-gold sun halo, mostly visible behind the upper-left body, so the two icons read as day and night members of the same family. Keep the solar shape simple and integrated, no decorative rays or star particles.
+
+Composition: one unified bird-and-sun emblem, centered, fully visible including beak, halo and tail; match the reference's calm, clean, premium icon treatment and generous midnight-blue negative space. Keep the entire emblem between approximately 22% and 78% horizontally and 18% and 82% vertically. The play triangle should remain clearly legible at launcher size. Background fills the entire square and stays dark navy with only a subtle soft central glow. Render the complete square artwork without pre-applied rounded corners.
+
+No text, letters, words, app names, watermark, mockup phone, border, extra birds or extra symbols. Avoid photorealism, heavy 3D bevels, flashy lens flares and clutter. Deliver just one coherent, polished app icon.

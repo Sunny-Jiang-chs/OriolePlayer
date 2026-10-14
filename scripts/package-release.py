@@ -1,4 +1,4 @@
-"""Build a desktop distribution from an explicit player-only file list."""
+"""Build the standalone player distribution with its pinned shared-format snapshot."""
 
 import hashlib
 import json
@@ -10,6 +10,7 @@ VERSION = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["versi
 FILES = [
     "README.md", "THIRD_PARTY_NOTICES.md", "package.json", "index.html",
     "server.mjs", "Start.cmd", "start.ps1", "docs/ANDROID.md",
+    "shared-lock.json",
     "datasets/index.json", "datasets/example/package.json",
     "datasets/example/README.md", "datasets/example/build_example.py",
     "datasets/example/media/station-day.png", "datasets/example/media/station-evening.png",
@@ -18,7 +19,7 @@ FILES = [
 ]
 for folder in ("player", "schema"):
     for source in sorted((ROOT / folder).rglob("*")):
-        if source.is_file() and (source.suffix in (".js", ".css", ".json", ".md") or source.name == "lucide-LICENSE"):
+        if source.is_file() and not source.name.endswith(".test.mjs") and (source.suffix in (".js", ".mjs", ".html", ".css", ".json", ".md") or source.name in ("lucide-LICENSE", "huangli-icon-192.png")):
             FILES.append(source.relative_to(ROOT).as_posix())
 
 catalog = json.loads((ROOT / "datasets/index.json").read_text(encoding="utf-8"))

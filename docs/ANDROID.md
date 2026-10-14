@@ -6,7 +6,7 @@ Android 版复用通用网页播放器与 CGScene Package 数据格式。APK 只
 
 ## 安装与导入
 
-正式版本在 [Releases](https://github.com/Sunny-Jiang-chs/huangli-player/releases) 下载；当前源码构建输出 `HuangliPlayer-0.2.3-release.apk`，复制到手机后安装。
+正式版本在 [Releases](https://github.com/Sunny-Jiang-chs/huangli-player/releases) 下载；当前源码构建输出 `HuangliPlayer-0.2.5-release.apk`，复制到手机后安装。
 
 1. 打开 **黄鹂播放器**，首次进入显示内置创作者示例。
 2. 点击顶部 **目录**，选择 **浏览目录（含隐藏）**、**系统目录选择器** 或 **导入 ZIP 数据包**。
@@ -28,7 +28,9 @@ Android 版复用通用网页播放器与 CGScene Package 数据格式。APK 只
 ## 手机阅读
 
 - 点击画面翻页；自动模式下手动翻页继续自动阅读。
-- 全屏隐藏顶部工具栏和底部进度条，画面按原比例最大化，对白叠在底部。
+- 全屏自动切换横屏并隐藏顶部工具栏和底部进度条，画面按原比例最大化，对白叠在底部；退出后恢复原方向策略。
+- 长按画面或对白区约 0.45 秒可快速翻页，松开停止，遇到选项或段落终点停止。
+- “阅读设置”提供对白框透明度调节，同时显示实际安装的版本号及 Debug / Release 类型，方便确认是否安装了新版。
 - 右上角退出按钮或 Android 返回键可退出全屏。
 - 音量面板分别控制 BGM 与其他音频，并记住本机设置；同时显示 BGM 的实际播放、暂停、静音、零音量或加载失败状态，可用“重试 BGM”重新加载当前音乐。
 - 界面使用深灰背景与黄鹂暖黄色强调。手机竖屏上方预览、下方场景列表独立滚动，横屏保留场景抽屉。
@@ -72,20 +74,20 @@ OGG 模式使用 Vorbis q4 有损压缩，只生成副本，不修改源包；�
 
 | 文件 | 用途 |
 | --- | --- |
-| `HuangliPlayer-0.2.3-debug.apk` | 可连接 WebView 调试器的调试版 |
-| `HuangliPlayer-0.2.3-release.apk` | 关闭调试的安装版 |
+| `HuangliPlayer-0.2.5-debug.apk` | 可连接 WebView 调试器的调试版 |
+| `HuangliPlayer-0.2.5-release.apk` | 关闭调试的安装版 |
 | `*.sha256` | 对应 APK 的 SHA-256 校验值 |
 
-当前两种配置沿用本机 Android 开发签名。应用标识继续使用 `com.cgscenestudio.player`，以兼容已有安装；应用显示名称为 **黄鹂播放器**。版本号为 0.2.3。Release APK 可直接安装，但该签名配置不属于应用商店发布方案；自行构建与已有安装签名不同时，Android 不允许直接覆盖。
+当前两种配置沿用本机 Android 开发签名。应用标识继续使用 `com.cgscenestudio.player`，以兼容已有安装；应用显示名称为 **黄鹂播放器**。版本号为 0.2.5。Release APK 可直接安装，但该签名配置不属于应用商店发布方案；自行构建与已有安装签名不同时，Android 不允许直接覆盖。
 
 ## 模拟器与本地验证
 
-准备 Android SDK、系统镜像和 AVD 后，双击 `Start-Android.cmd` 可启动模拟器、安装当前 release APK 并打开播放器。脚本不重新构建，日志位于 `tmp/`。可通过 `start-android.ps1` 的 `-SdkPath`、`-AvdPath`、`-AvdName` 指定本机模拟器配置。
+准备 Android SDK、系统镜像和 AVD 后，双击 `Start-Android.cmd` 会先增量构建最新 debug APK，再启动模拟器、覆盖安装并打开播放器；原有应用数据会保留。日志位于 `tmp/`。可通过 `start-android.ps1` 的 `-SdkPath`、`-AvdPath`、`-AvdName` 指定本机模拟器配置，或用 `-SkipBuild` 在确认 APK 已更新时直接安装。
 
 也可使用已加入 PATH 的 adb 安装：
 
 ```powershell
-adb install -r .\dist\android\HuangliPlayer-0.2.3-debug.apk
+adb install -r .\dist\android\HuangliPlayer-0.2.5-debug.apk
 ```
 
 日常修改先用内置示例检查载入、翻页、自动推进、对白、音量、全屏及横竖屏布局，再导入自己的作品核对素材与声音。Android 模拟器的结构性检查不能代替实体手机的触控体验与实际声音试听。

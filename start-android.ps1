@@ -2,7 +2,8 @@
 param(
     [string]$SdkPath = 'D:\tools\android-sdk',
     [string]$AvdPath = 'D:\tools\android-home',
-    [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$AvdName = 'northward_api36'
+    [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$AvdName = 'northward_api36',
+    [switch]$SkipBuild
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,10 +28,14 @@ try {
     foreach ($taskTool in @($taskAdb, $taskEmulator)) {
         if (-not (Test-Path -LiteralPath $taskTool -PathType Leaf)) { throw "Missing Android tool: $taskTool" }
     }
+    if (-not $SkipBuild) {
+        Write-Host 'Building the latest Android debug preview (including current player files)...'
+        & (Join-Path $PSScriptRoot 'build-android.ps1') -Variant Debug -SdkPath $SdkPath
+    }
     $taskApk = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'dist\android') `
-        -Filter 'HuangliPlayer-*-release.apk' -File -ErrorAction SilentlyContinue |
+        -Filter 'HuangliPlayer-*-debug.apk' -File -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if (-not $taskApk) { throw 'No APK found. Double-click Build-Android.cmd first.' }
+    if (-not $taskApk) { throw 'No debug APK found. Run Start-Android without -SkipBuild, or build a debug APK first.' }
     $env:ANDROID_AVD_HOME = $AvdPath
     & $taskAdb start-server
     if ($LASTEXITCODE -ne 0) { throw 'ADB could not start.' }

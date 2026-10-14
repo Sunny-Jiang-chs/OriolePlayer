@@ -7,6 +7,7 @@ import android.app.ProgressDialog;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
@@ -31,6 +32,8 @@ public final class MainActivity extends Activity {
     private PackageStore store;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private boolean fullScreen;
+    private boolean fullscreenOrientationSaved;
+    private int orientationBeforeFullscreen = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
     private boolean importing;
     private boolean picking;
     private boolean resumed;
@@ -257,6 +260,16 @@ public final class MainActivity extends Activity {
     }
 
     private void setFullscreen(boolean enabled) {
+        if (enabled && !fullScreen) {
+            // Keep the user's normal orientation policy so leaving the enlarged
+            // viewer returns to the same portrait/sensor behavior as before.
+            orientationBeforeFullscreen = getRequestedOrientation();
+            fullscreenOrientationSaved = true;
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        } else if (!enabled && fullScreen && fullscreenOrientationSaved) {
+            setRequestedOrientation(orientationBeforeFullscreen);
+            fullscreenOrientationSaved = false;
+        }
         fullScreen = enabled;
         if (Build.VERSION.SDK_INT >= 30) {
             WindowInsetsController controller = getWindow().getInsetsController();
@@ -312,6 +325,9 @@ public final class MainActivity extends Activity {
     }
 
     private final class NativeBridge {
+        @JavascriptInterface public String getAppVersion() {
+            return BuildConfig.VERSION_NAME + (BuildConfig.DEBUG ? " · Debug" : " · Release");
+        }
         @JavascriptInterface public void requestForeground() { runOnUiThread(MainActivity.this::notifyForeground); }
         @JavascriptInterface public void pickPackage() { runOnUiThread(MainActivity.this::pickPackage); }
         @JavascriptInterface public void packageSelectionFinished() { runOnUiThread(() -> {

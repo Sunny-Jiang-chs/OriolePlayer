@@ -5,14 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#111214">
   <title>黄鹂播放器</title>
-  <link rel="icon" href="data:,">
+  <link rel="icon" type="image/png" href="./player/branding/huangli-icon-192.png">
   <link rel="stylesheet" href="./player/app.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="./" aria-label="黄鹂播放器首页"><span>黄鹂播放器</span></a>
+    <a class="brand" href="./" aria-label="黄鹂播放器首页"><img src="./player/branding/huangli-icon-192.png" alt="" width="26" height="26"><span>黄鹂播放器</span></a>
     <div class="project-name"><span id="project-title">正在载入数据包</span><span id="project-meta" class="muted"></span></div>
     <div class="top-actions">
+      <a id="desktop-organizer-link" class="icon-button directory-button" href="./organizer/index.html" title="筛选场景并重新导出数据包" hidden><i data-lucide="list-filter"></i><span>整理</span></a>
       <select id="package-select" class="package-select" aria-label="数据包"><option value="">数据包</option></select>
       <label class="icon-button directory-button" title="打开数据包目录" aria-label="打开数据包目录"><i data-lucide="folder-open"></i><span>目录</span><input id="package-folder" type="file" webkitdirectory directory multiple hidden></label>
     </div>
@@ -38,10 +39,13 @@
           <button id="dialogue-toggle" class="tool-button" type="button" title="隐藏对白" aria-label="隐藏对白" aria-pressed="false"><i data-lucide="message-square"></i></button>
           <button id="sound-toggle" class="tool-button" type="button" title="关闭声音" aria-label="关闭声音"><i data-lucide="volume-2"></i></button>
           <div class="mixer-wrap">
-            <button id="mixer-toggle" class="tool-button" type="button" title="音量设置" aria-label="音量设置" aria-expanded="false" aria-controls="audio-mixer"><i data-lucide="sliders-horizontal"></i></button>
-            <section id="audio-mixer" class="audio-mixer" aria-label="音量设置" hidden>
+            <button id="mixer-toggle" class="tool-button" type="button" title="阅读设置" aria-label="阅读设置" aria-expanded="false" aria-controls="audio-mixer"><i data-lucide="sliders-horizontal"></i></button>
+            <section id="audio-mixer" class="audio-mixer" aria-label="阅读设置" hidden>
+              <p id="app-version" class="app-version" hidden></p>
               <label class="mixer-row"><span>背景音乐 <output id="bgm-volume-value" for="bgm-volume">100%</output></span><input id="bgm-volume" type="range" min="0" max="100" step="1" value="100" aria-label="背景音乐音量"></label>
               <label class="mixer-row"><span>音效与语音 <output id="other-volume-value" for="other-volume">100%</output></span><input id="other-volume" type="range" min="0" max="100" step="1" value="100" aria-label="音效与语音音量"></label>
+              <label class="mixer-row"><span>对白框透明度 <output id="dialogue-transparency-value" for="dialogue-transparency">9%</output></span><input id="dialogue-transparency" type="range" min="0" max="100" step="1" value="9" aria-label="对白框透明度"></label>
+              <p class="mixer-hint">0% 不透明 · 100% 全透明；长按画面可快进。</p>
               <div class="bgm-health"><span id="bgm-status" role="status">无 BGM</span><button id="bgm-retry" type="button" disabled>重试 BGM</button></div>
             </section>
           </div>
@@ -49,10 +53,11 @@
           <button id="fullscreen-view" class="tool-button" type="button" title="全屏预览" aria-label="全屏预览"><i data-lucide="maximize"></i></button>
         </div>
       </div>
-      <div id="stage" class="stage" title="下一页">
+      <div id="stage" class="stage" title="点击下一页，长按快进">
         <button id="exit-fullscreen" class="tool-button fullscreen-exit" type="button" title="退出全屏" aria-label="退出全屏" hidden><i data-lucide="minimize"></i></button>
+        <div id="fast-forward-indicator" class="fast-forward-indicator" role="status" hidden>快进中 · 松开停止</div>
         <div id="visual-frame" class="visual-frame">
-        <img id="still-image" alt="当前页面画面" hidden>
+        <img id="still-image" alt="当前页面画面" draggable="false" hidden>
         <canvas id="decoded-image" hidden></canvas>
         <div id="stage-placeholder" class="stage-placeholder"><i data-lucide="image" class="placeholder-icon"></i><span>画面尚未载入</span></div>
         <div id="image-note" class="image-note" hidden></div>
@@ -89,6 +94,27 @@
   <button id="panel-backdrop" class="panel-backdrop" type="button" aria-label="关闭侧栏" hidden></button>
   <div id="toast" class="toast" role="status" hidden></div>
   <script src="./player/vendor/lucide.min.js"></script>
+  <script type="module">
+    if (!window.CGSceneNative && location.hostname !== 'appassets.androidplatform.net') {
+      const organizerLink = document.getElementById('desktop-organizer-link');
+      try {
+        const response = await fetch('./__cgscene_status', { cache: 'no-store' });
+        const status = response.ok ? await response.json() : null;
+        if (status?.organizer?.url) {
+          const organizerUrl = new URL(status.organizer.url, location.href);
+          const currentPackage = new URLSearchParams(location.search).get('package');
+          if (currentPackage) {
+            const manifest = new URL(currentPackage, location.href);
+            if (manifest.origin === location.origin) organizerUrl.searchParams.set('package', manifest.href);
+          }
+          if (organizerUrl.origin === location.origin) {
+            organizerLink.href = organizerUrl.href;
+            organizerLink.hidden = false;
+          }
+        }
+      } catch { /* Standalone/static player installations have no organizer integration. */ }
+    }
+  </script>
   <script type="module" src="./player/app.js"></script>
 </body>
 </html>
