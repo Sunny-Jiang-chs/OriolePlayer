@@ -40,6 +40,7 @@ public final class MainActivity extends Activity {
     private boolean waitingForAllFiles;
     private boolean destroyed;
     private DirectoryBrowser directoryBrowser;
+    private PackageManagerDialog packageManager;
     private android.app.Dialog pickerDialog;
     private ProgressDialog progressDialog;
 
@@ -128,11 +129,24 @@ public final class MainActivity extends Activity {
         picking = true;
         call("onBackground", "");
         pickerDialog = new AlertDialog.Builder(this).setTitle("打开作品")
-                .setItems(new String[]{"浏览目录（含隐藏）", "系统目录选择器", "导入 ZIP 数据包"}, (dialog, which) -> {
+                .setItems(new String[]{"浏览目录（含隐藏）", "系统目录选择器", "导入 ZIP 数据包", "作品管理（位置与空间）"}, (dialog, which) -> {
                     if (which == 0) openDirectoryBrowser();
+                    else if (which == 3) showPackageManager();
                     else openSystemPicker(which == 2);
                 }).setNegativeButton("取消", (dialog, which) -> finishPicking())
                 .setOnCancelListener(dialog -> finishPicking()).show();
+    }
+
+    private void showPackageManager() {
+        if (destroyed || isFinishing()) { finishPicking(); return; }
+        packageManager = new PackageManagerDialog(this, store, worker, changed -> {
+            packageManager = null;
+            if (!changed || web == null) { finishPicking(); return; }
+            // Keep media suspended until removed current packages have been unloaded.
+            web.evaluateJavascript("Promise.resolve().then(() => window.CGSceneAndroid?.onPackagesChanged())"
+                    + ".finally(() => window.CGSceneNative.packageManagementFinished())", null);
+        });
+        packageManager.show();
     }
 
     private void openSystemPicker(boolean zip) {
@@ -284,6 +298,7 @@ public final class MainActivity extends Activity {
     }
 
     private void handleBack() {
+        if (packageManager != null) { packageManager.close(); return; }
         if (directoryBrowser != null) { directoryBrowser.handleBack(); return; }
         if (web == null) { finish(); return; }
         web.evaluateJavascript("Boolean(window.CGSceneAndroid?.handleBack())", consumed -> {
@@ -295,6 +310,7 @@ public final class MainActivity extends Activity {
         super.onConfigurationChanged(configuration);
         container.requestApplyInsets();
         if (directoryBrowser != null) directoryBrowser.onConfigurationChanged();
+        if (packageManager != null) packageManager.onConfigurationChanged();
     }
     @Override protected void onPause() {
         resumed = false;
@@ -317,6 +333,7 @@ public final class MainActivity extends Activity {
     @Override protected void onDestroy() {
         destroyed = true;
         if (directoryBrowser != null) { directoryBrowser.dismiss(); directoryBrowser = null; }
+        if (packageManager != null) { packageManager.dismiss(); packageManager = null; }
         if (pickerDialog != null) pickerDialog.dismiss();
         if (progressDialog != null) progressDialog.dismiss();
         worker.shutdownNow();
@@ -329,6 +346,7 @@ public final class MainActivity extends Activity {
             return BuildConfig.VERSION_NAME + (BuildConfig.DEBUG ? " · Debug" : " · Release");
         }
         @JavascriptInterface public void requestForeground() { runOnUiThread(MainActivity.this::notifyForeground); }
+        @JavascriptInterface public void packageManagementFinished() { runOnUiThread(MainActivity.this::finishPicking); }
         @JavascriptInterface public void pickPackage() { runOnUiThread(MainActivity.this::pickPackage); }
         @JavascriptInterface public void packageSelectionFinished() { runOnUiThread(() -> {
             importing = false;

@@ -11,5 +11,5 @@
         <item name="android:statusBarColor">#111214</item>
         <item name="android:navigationBarColor">#111214</item>
     </style>
-    <color name="launcher_background">#061337</color>
+    <color name="launcher_background">#F5EFDF</color>
 </resources>

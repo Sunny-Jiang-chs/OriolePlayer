@@ -1,9 +1,11 @@
 {
   "name": "huangli-player",
-  "version": "0.2.5",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "build:cubism": "node scripts/build-cubism.mjs",
+    "demo:animation": "node scripts/build-animation-demo.mjs"
   }
 }

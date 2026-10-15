@@ -34,19 +34,125 @@ final class PackageStore {
         directory.mkdirs();
     }
 
-    synchronized JSONArray packages() {
+    private synchronized JSONArray entries() {
         try { return new JSONArray(preferences.getString("list", "[]")); }
         catch (Exception ignored) { return new JSONArray(); }
     }
 
+    synchronized JSONArray packages() {
+        JSONArray active = new JSONArray(), all = entries();
+        for (int i = 0; i < all.length(); i++) {
+            JSONObject row = all.optJSONObject(i);
+            if (row != null && !row.optBoolean("trashed")) active.put(row);
+        }
+        return active;
+    }
+
     private synchronized void register(JSONObject entry) throws Exception {
-        JSONArray before = packages(), after = new JSONArray();
+        JSONArray before = entries(), after = new JSONArray();
         for (int i = 0; i < before.length(); i++) {
             JSONObject item = before.getJSONObject(i);
             if (!item.getString("id").equals(entry.getString("id"))) after.put(item);
         }
         after.put(entry);
         if (!preferences.edit().putString("list", after.toString()).commit()) throw new IOException("无法保存数据包登记");
+    }
+
+    /** Metadata and file sizes only: no media content is opened for the manager. */
+    JSONArray managementEntries() throws Exception {
+        JSONArray result = entries();
+        ManagedPackageFiles files = new ManagedPackageFiles(directory.toPath());
+        for (int i = 0; i < result.length(); i++) {
+            JSONObject row = result.getJSONObject(i);
+            switch (row.getString("kind")) {
+                case "local":
+                    try {
+                        String id = row.getString("id");
+                        // Reconcile an interrupted move with the actual directory location.
+                        boolean active = files.path(id, false).toFile().exists();
+                        boolean trash = files.path(id, true).toFile().exists();
+                        if (active != trash && row.optBoolean("trashed") != trash) {
+                            row.put("trashed", trash);
+                            register(row);
+                            row.put("reconciled", true);
+                        }
+                        boolean trashed = row.optBoolean("trashed");
+                        row.put("location", files.path(id, trashed).toString());
+                        row.put("bytes", files.size(id, trashed));
+                        row.put("missing", !(trashed ? trash : active));
+                        if (row.optBoolean("purging")) row.put("warning", "上次彻底删除未完成，请继续删除；该副本已不能恢复。");
+                    } catch (IOException error) {
+                        row.put("location", "目录无法读取").put("bytes", -1).put("warning", error.getMessage());
+                    }
+                    break;
+                case "file": row.put("location", row.getString("path")); break;
+                case "tree": row.put("location", row.getString("uri")); break;
+                default: row.put("location", "未知存储方式");
+            }
+        }
+        return result;
+    }
+
+    private synchronized void forget(String id) throws Exception {
+        JSONArray all = entries(), kept = new JSONArray();
+        for (int i = 0; i < all.length(); i++) {
+            JSONObject row = all.getJSONObject(i);
+            if (!id.equals(row.getString("id"))) kept.put(row);
+        }
+        SharedPreferences.Editor edit = preferences.edit().putString("list", kept.toString());
+        if ((ORIGIN + "/packages/" + id + "/package.json").equals(lastPackage())) edit.remove("last");
+        if (!edit.commit()) throw new IOException("无法保存作品列表，请重试");
+        childCache.clear();
+    }
+
+    private JSONObject managementEntry(String id) throws Exception {
+        JSONArray all = entries();
+        for (int i = 0; i < all.length(); i++) {
+            JSONObject row = all.getJSONObject(i);
+            if (id.equals(row.getString("id"))) return row;
+        }
+        throw new IOException("作品记录不存在，请刷新列表");
+    }
+
+    synchronized void removeExternal(String id) throws Exception {
+        JSONObject row = managementEntry(id);
+        if (!row.optString("kind").equals("file") && !row.optString("kind").equals("tree"))
+            throw new IOException("导入副本请移入回收站");
+        forget(id);
+        if (row.optString("kind").equals("tree")) {
+            try { context.getContentResolver().releasePersistableUriPermission(Uri.parse(row.getString("uri")), Intent.FLAG_GRANT_READ_URI_PERMISSION); }
+            catch (SecurityException ignored) { /* The grant may already have expired. */ }
+        }
+    }
+
+    synchronized void setTrashed(String id, boolean trashed) throws Exception {
+        JSONObject row = managementEntry(id);
+        if (!row.optString("kind").equals("local")) throw new IOException("仅管理应用内导入副本");
+        if (!trashed && row.optBoolean("purging")) throw new IOException("该副本已开始彻底删除，请继续删除后重新导入");
+        if (row.optBoolean("trashed") == trashed) return;
+        ManagedPackageFiles files = new ManagedPackageFiles(directory.toPath());
+        boolean exists = files.path(id, !trashed).toFile().exists();
+        if (!exists && !trashed) throw new IOException("副本文件已不存在，无法恢复");
+        if (exists) files.move(id, trashed);
+        row.put("trashed", trashed);
+        try { register(row); }
+        catch (Exception error) {
+            if (exists) files.move(id, !trashed);
+            throw error;
+        }
+        if (trashed && (ORIGIN + "/packages/" + id + "/package.json").equals(lastPackage()))
+            preferences.edit().remove("last").commit();
+    }
+
+    synchronized void deleteTrashed(String id) throws Exception {
+        JSONObject row = managementEntry(id);
+        if (!row.optString("kind").equals("local") || !row.optBoolean("trashed"))
+            throw new IOException("只能彻底删除回收站中的导入副本");
+        // Persist before removing files so interrupted deletion cannot be restored as a complete copy.
+        row.put("purging", true);
+        register(row);
+        new ManagedPackageFiles(directory.toPath()).purge(id);
+        forget(id);
     }
 
     String lastPackage() { return preferences.getString("last", ""); }
@@ -95,15 +201,9 @@ final class PackageStore {
     }
 
     static JSONObject readManifest(InputStream stream) throws Exception {
-        try (InputStream input = stream; ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
-            byte[] chunk = new byte[65536]; int n;
-            while ((n = input.read(chunk)) != -1) {
-                if (buffer.size() + n > 96 * 1024 * 1024) throw new IOException("数据包清单超过 96 MB");
-                buffer.write(chunk, 0, n);
-            }
-            JSONObject manifest = new JSONObject(buffer.toString("UTF-8"));
+            JSONObject manifest = ManifestSummary.read(stream);
             String version = manifest.getString("schemaVersion");
-            if (!version.equals("1.0.0") && !version.equals("1.1.0")) throw new IOException("仅支持 CG Scene Package 1.0 / 1.1");
+            if (!version.equals("1.0.0") && !version.equals("1.1.0") && !version.equals("1.2.0")) throw new IOException("仅支持 CG Scene Package 1.0 / 1.1 / 1.2");
             manifest.getJSONObject("project").getString("title");
             manifest.getJSONArray("scenes");
             JSONObject assets = manifest.getJSONObject("assets");
@@ -112,10 +212,31 @@ final class PackageStore {
                 for (int i = 0; i < rows.length(); i++) {
                     JSONObject row = rows.getJSONObject(i);
                     if (row.has("uri")) safePath(Uri.decode(row.getString("uri")));
+                    JSONArray dependencies = row.optJSONArray("dependencies");
+                    if (row.optString("kind").equals("live2d") && dependencies == null)
+                        throw new IOException("Live2D 模型需要完整的 dependencies 文件列表");
+                    if (dependencies != null) for (int j = 0; j < dependencies.length(); j++) safePath(Uri.decode(dependencies.getString(j)));
                 }
             }
             return manifest;
+    }
+
+    /** All declared model dependencies travel with the model, even if only one motion is selected. */
+    static Set<String> requiredFiles(JSONObject manifest) throws Exception {
+        Set<String> result = new LinkedHashSet<>();
+        JSONObject assets = manifest.getJSONObject("assets");
+        for (String kind : new String[]{"visuals", "audio"}) {
+            JSONArray rows = assets.getJSONArray(kind);
+            for (int i = 0; i < rows.length(); i++) {
+                JSONObject asset = rows.getJSONObject(i);
+                if (!asset.optString("status").equals("available")) continue;
+                result.add(safePath(Uri.decode(asset.getString("uri"))));
+                JSONArray dependencies = asset.optJSONArray("dependencies");
+                if (kind.equals("visuals") && dependencies != null)
+                    for (int j = 0; j < dependencies.length(); j++) result.add(safePath(Uri.decode(dependencies.getString(j))));
+            }
         }
+        return result;
     }
 
     JSONObject addTree(Uri tree) throws Exception {
@@ -123,6 +244,7 @@ final class PackageStore {
         childCache.clear();
         Uri manifestUri = resolveTree(tree, "package.json");
         JSONObject manifest = readManifest(context.getContentResolver().openInputStream(manifestUri));
+        for (String path : requiredFiles(manifest)) resolveTree(tree, path);
         String id = UUID.nameUUIDFromBytes(tree.toString().getBytes(StandardCharsets.UTF_8)).toString();
         JSONObject row = new JSONObject().put("id", id).put("kind", "tree").put("uri", tree.toString())
                 .put("title", manifest.getJSONObject("project").getString("title"));
@@ -135,17 +257,7 @@ final class PackageStore {
         File canonicalRoot = root.getCanonicalFile();
         File manifestFile = resolveFileWithin(canonicalRoot, "package.json");
         JSONObject manifest = readManifest(new FileInputStream(manifestFile));
-        Set<String> checked = new HashSet<>();
-        JSONObject assets = manifest.getJSONObject("assets");
-        for (String kind : new String[]{"visuals", "audio"}) {
-            JSONArray rows = assets.getJSONArray(kind);
-            for (int i = 0; i < rows.length(); i++) {
-                JSONObject asset = rows.getJSONObject(i);
-                if (!asset.optString("status").equals("available")) continue;
-                String path = Uri.decode(asset.getString("uri"));
-                if (checked.add(path)) resolveFileWithin(canonicalRoot, path);
-            }
-        }
+        for (String path : requiredFiles(manifest)) resolveFileWithin(canonicalRoot, path);
         String id = UUID.nameUUIDFromBytes(("file:" + canonicalRoot.getPath()).getBytes(StandardCharsets.UTF_8)).toString();
         JSONObject row = new JSONObject().put("id", id).put("kind", "file").put("path", canonicalRoot.getPath())
                 .put("title", manifest.getJSONObject("project").getString("title"));
@@ -187,16 +299,7 @@ final class PackageStore {
             File manifestFile = new File(stage, "package.json");
             if (!manifestFile.isFile()) throw new IOException("压缩包根目录必须包含 package.json");
             JSONObject manifest = readManifest(new FileInputStream(manifestFile));
-            JSONObject assets = manifest.getJSONObject("assets");
-            for (String kind : new String[]{"visuals", "audio"}) {
-                JSONArray rows = assets.getJSONArray(kind);
-                for (int i = 0; i < rows.length(); i++) {
-                    JSONObject row = rows.getJSONObject(i);
-                    if (row.optString("status").equals("available") &&
-                            !new File(stage, safePath(Uri.decode(row.getString("uri")))).isFile())
-                        throw new IOException("压缩包缺少清单中的资源文件");
-                }
-            }
+            for (String path : requiredFiles(manifest)) resolveFileWithin(stage, path);
             progress.update("正在保存数据包…");
             if (!stage.renameTo(destination)) throw new IOException("无法保存导入结果");
             JSONObject row = new JSONObject().put("id", id).put("kind", "local")

@@ -18,11 +18,11 @@ FILES = [
     "datasets/example/README.md", "datasets/example/build_example.py",
     "datasets/example/media/station-day.png", "datasets/example/media/station-evening.png",
     "datasets/example/media/quiet-platform.wav", "datasets/example/media/arrival.wav",
-    "scripts/package-dataset.py",
+    "scripts/package-dataset.py", "docs/ANIMATION.md",
 ]
 for folder in ("player", "schema"):
     for source in sorted((ROOT / folder).rglob("*")):
-        if source.is_file() and not source.name.endswith(".test.mjs") and (source.suffix in (".js", ".mjs", ".html", ".css", ".json", ".md") or source.name in ("lucide-LICENSE", "huangli-icon-192.png")):
+        if source.is_file() and not source.name.endswith(".test.mjs") and (source.suffix in (".js", ".mjs", ".html", ".css", ".json", ".md", ".vert", ".frag") or source.name in ("lucide-LICENSE", "huangli-icon-32.png", "huangli-icon-192.png")):
             FILES.append(source.relative_to(ROOT).as_posix())
 
 catalog = json.loads((ROOT / "datasets/index.json").read_text(encoding="utf-8"))

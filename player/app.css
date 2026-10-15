@@ -26,8 +26,10 @@ button:disabled { opacity: .42; cursor: default; }
 .lucide { width: 16px; height: 16px; flex: 0 0 16px; }
 .muted { color: var(--muted); }
 .topbar { height: var(--header-height); display: flex; align-items: center; gap: 22px; padding: 0 16px; border-bottom: 1px solid var(--line); background: #17181b; }
-.brand { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; color: #eeeef0; text-decoration: none; font-size: 15px; font-weight: 650; white-space: nowrap; }
-.brand img { display: block; width: 26px; height: 26px; flex: 0 0 26px; border-radius: 6px; }
+.brand { display: inline-flex; align-items: center; gap: 9px; flex-shrink: 0; color: #eeeef0; text-decoration: none; font-size: 15px; font-weight: 600; white-space: nowrap; }
+.brand img { display: block; width: 26px; height: 26px; flex: 0 0 26px; border-radius: 20%; }
+.brand-title { display: inline-flex; align-items: center; gap: 6px; }
+.brand-role { color: var(--muted); font-size: 12px; font-weight: 400; }
 .project-name { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 12px; }
 .project-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-name .muted { font-size: 10px; }
@@ -91,6 +93,15 @@ button:disabled { opacity: .42; cursor: default; }
 .tool-button.labeled { gap: 5px; width: 65px; font-size: 11px; }
 .stage { position: relative; display: grid; place-items: center; min-width: 0; min-height: 0; overflow: hidden; isolation: isolate; container-type: size; background: #080a0b; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
 .visual-frame { position: relative; display: grid; place-items: center; width: min(100cqw, calc(100cqh * var(--visual-aspect, 1.777778))); height: min(100cqh, calc(100cqw / var(--visual-aspect, 1.777778))); }
+.visual-layers { position: absolute; inset: 0; overflow: hidden; isolation: isolate; pointer-events: none; }
+.visual-layer { position: absolute; overflow: hidden; transform-origin: center; }
+.visual-layer > img, .visual-layer > video, .visual-layer > canvas { display: block; width: 100%; height: 100%; object-fit: var(--layer-fit, contain); }
+.layer-placeholder { display: grid; place-items: center; width: 100%; height: 100%; padding: 24px; text-align: center; background: #000; color: #c6ba9a; font-size: 13px; }
+.animation-controls { display: flex; gap: 4px; border-left: 1px solid #39413d; padding-left: 6px; }
+.animation-controls button { white-space: nowrap; padding-inline: 8px; }
+.animation-controls .tool-button.labeled { width: auto; min-width: 44px; }
+.visual-frame > .dialogue { z-index: 2; }
+.visual-frame > .image-note, .visual-frame > .special-placeholder { z-index: 1; }
 .visual-frame > img, .visual-frame > canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
 .stage-placeholder { display: flex; flex-direction: column; align-items: center; gap: 11px; padding: 20px; color: #89928d; font-size: 12px; }
 .placeholder-icon.lucide { width: 30px; height: 30px; color: var(--accent); }
@@ -189,6 +200,8 @@ body.is-fullscreen #scene-panel-toggle, body.is-fullscreen #inspector-panel-togg
 
 /* Keep touch controls usable at the device's CSS viewport size. */
 @media (pointer: coarse) {
+  .toolbar-actions { flex-wrap: wrap; }
+  .animation-controls .tool-button.labeled { width: auto; min-width: 44px; padding-inline: 10px; }
   button, label[role="button"], .icon-button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   .icon-button, .tool-button, .tool-button.labeled, .nav-button { min-width: 44px; width: 44px; min-height: 44px; height: 44px; }
   .tool-button.labeled span { display: none; }

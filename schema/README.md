@@ -1,10 +1,55 @@
-# CG Scene Package 1.1.0
+# CG Scene Package 1.2.0
 
 这是播放器与游戏导出器之间的通用交换格式。导出器负责理解游戏资源和脚本；播放器只读取标准场景、页面、画面、声音和选项字段。数据包可以复制到另一台机器，不依赖原游戏安装目录。
 
 解析器是独立项目，负责将来源文件转换为本格式；黄鹂播放器只消费标准数据包。字段约束以本页及 [JSON Schema](./cgscene-package.schema.json) 为准。
 
-播放器兼容 `1.0.0` 与 `1.1.0`。1.0 的场景默认按页面 `order` 阅读；1.1 为每页提供明确后继，适合存储顺序与实际段落连接不同的场景。下面保留可直接使用的 1.0 最小示例；需要连接图时按 1.1 约定扩展。
+播放器兼容 `1.0.0`、`1.1.0` 与 `1.2.0`。1.0 的场景默认按页面 `order` 阅读；1.1 / 1.2 为每页提供明确后继。1.2 增加完整显示状态和动态资源；未提供 `visualState` 的静态页沿用旧行为。下面保留可直接使用的 1.0 最小示例。
+
+## 1.2 图层与逐页动画
+
+`assets.visuals[].kind` 支持 `image`（省略时的默认值）、`video`、`live2d`。视频使用浏览器支持的 MP4/WebM；Live2D 使用 Cubism 3+ 的 model3.json / moc3 / motion3.json / exp3.json。旧 Cubism 2、Spine、自定义游戏插件没有通用解码保证。
+
+每页可提供 `visualState={width,height,background,layers}`。这是进入该页时的**完整快照**：未列出的图层立即停止并移除，`layers:[]` 明确清屏，`visible:false` 的图层也移除；随后重新显示从起点播放。`visualState` 存在时覆盖旧 `visual` 的显示语义；旧字段仍必填，可保存静态预览/兼容信息，但不要将待解析模型伪装为已可用图片。`presentation.mode="special"` 优先，整页使用占位。
+
+```json
+{
+  "visualState": {
+    "width": 1920, "height": 1080, "background": "#000000",
+    "layers": [{
+      "id": "subject", "assetId": "model:1", "status": "available", "role": "event-cg",
+      "x": 0, "y": 0, "width": 1920, "height": 1080,
+      "rotation": 0, "opacity": 1, "zIndex": 0, "visible": true, "fit": "contain",
+      "playback": {
+        "instanceId": "take:1", "motion": "model/idle.motion3.json", "expression": null,
+        "loop": true, "playing": true, "rate": 1, "startTime": 0,
+        "parameters": {"ParamAngleX": 10}, "parts": {"PartA": 1}
+      }
+    }]
+  }
+}
+```
+
+- 设计画布默认 1920×1080，背景默认黑色。位置与尺寸使用设计画布单位；左上角为原点，绕图层中心以角度顺时针旋转，透明度 0–1。相同 zIndex 按本页图层数组顺序叠放。画布和图层内容都保持比例；contain 完整显示，cover 裁边填满，不拉伸。
+- 图层默认覆盖设计画布，位置/旋转/zIndex 为 0、opacity 为 1、visible 为 true、fit 为 contain。图层 ID 在单页内唯一；available 必须引用可用资源，unresolved/missing 显示带 ID 的占位。
+- `playback` 默认为 instanceId=图层 ID、loop=false、playing=true、rate=1、startTime=0、parameters/parts={}。rate 范围 0.1–4；startTime 单位为秒，是剪辑起点，不是游戏全局时间。非零起点不重演跳过的物理历史。
+- 沿 `next` 或已解析选项连续阅读时，相同图层 ID、资源、instanceId、motion、expression、loop、startTime 的实例延续。改变位置、速度、playing、参数或部件不重播；改变任一实例标识项会重建。新段落也可通过显式连接延续同一实例。直接选场景、跳页、返回历史、重播本页都会重建目标快照。
+- `parameters` 为 Live2D 参数绝对覆盖值，`parts` 为部件透明度 0–1。两者都在动作、表情、物理、pose 后覆盖。不在新快照中的覆盖值移除。模型缺省物理与 pose 来自 model3.json；不自动随机播放 idle、不根据音频猜口型、不执行模型附带声音或游戏脚本。
+- `motion` / `expression` 是**相对 package.json 的 URI**，必须登记在该模型 dependencies 中；空值表示无动作/表情。每层一个主动作及一个表情；混合动作轨道、变量动作扩展、网格外游戏特效、摄像机时间轴和精确音画同步暂不表达。
+- 视频为静音视觉轨，声音继续走 `audioEvents` / `audioState`，避免双重播放。自动阅读沿用对白和配音等待逻辑，不等待视觉剪辑结束。暂停动画只暂停视觉实例，不暂停文字自动阅读或音频；重播动画也不重触发声音。
+- `image` 面向静态图；浏览器可显示 GIF/APNG，但其内部动画不受本协议播放控制。需要可控时序时使用 video 或 live2d。
+- `visual.role` 的角色含义同样适用于 layers[].role。不得按模型/贴图数量推算 CG 页数。
+
+Live2D 资源声明示例：
+
+```json
+{"id":"model:1","kind":"live2d","uri":"model/main.model3.json","status":"available",
+ "dependencies":["model/main.moc3","model/texture.png","model/idle.motion3.json","model/main.physics3.json"]}
+```
+
+`dependencies` 列出完整的可迁移文件集合，包括纹理、动作、表情、物理、pose 及需保留的其他模型文件；其 URI 相对 package.json，遵循相同包内路径限制。model3.json 内的路径按模型文件目录解析，按实际文件名处理，再与依赖清单比对。不要只复制入口 JSON；重导出者须使用 `visualAssetUris()` 加上 `pageReferences()` 收集依赖。不支持 1.2 的工具应明确拒绝此版本，不可降级后丢弃依赖。
+
+游戏脚本中间产物 `cgscene-source-extraction` 仍是提取证据层，不能只改版本号成为可播包。适配器必须确认页边界、显示提交/清除、动作生命周期及资源映射，再生成上述快照；未知关系保留为 unresolved。1.2 是播放交换格式，不执行原游戏脚本。
 
 ## 1.1 显式连接
 

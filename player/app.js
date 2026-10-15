@@ -1,5 +1,7 @@
 import { loadUrlPackage, loadDirectoryPackage } from "./package-loader.js";
 import { getDecoder } from "./decoders/registry.js";
+import { hasExplicitFlow } from "./vendor/cgscene/visual-state.js";
+import { VisualStage } from "./visual-stage.js";
 
 const $ = (id) => document.getElementById(id);
 const nativeHost = location.origin === "https://appassets.androidplatform.net" ? window.CGSceneNative : null;
@@ -36,6 +38,23 @@ const state = {
 state.audioOnceKeys = new Set();
 state.readingHistory = [];
 const ui = { scenesHidden: false, scenesOpen: false, infoOpen: false, dialogueVisible: true };
+const animation = new VisualStage($("visual-layers"), (layers) => {
+  const list = $("visual-layer-details");
+  list.replaceChildren();
+  for (const layer of layers) {
+    const item = document.createElement("li");
+    item.textContent = `${layer.id} · ${layer.kind} · ${{ loading: "载入中", ready: "已就绪", error: "待核对" }[layer.status]}${layer.kind !== "image" ? ` · ${layer.paused ? "暂停" : layer.loop ? "循环" : "单次"} · ${layer.instanceId}` : ""}${layer.message ? ` · ${layer.message}` : ""}`;
+    list.append(item);
+  }
+  if (!layers.length) { const item = document.createElement("li"); item.textContent = "无活动图层"; list.append(item); }
+});
+$("animation-pause").addEventListener("click", () => {
+  animation.setPaused(!animation.paused);
+  $("animation-pause").textContent = animation.paused ? "继续动画" : "暂停动画";
+  $("animation-pause").setAttribute("aria-pressed", String(animation.paused));
+});
+$("animation-restart").addEventListener("click", () => { if (currentPage()) renderVisual(currentPage(), { reset: true }); });
+document.addEventListener("visibilitychange", () => animation.setSuspended(document.hidden || state.audioSuspended));
 const hold = { pointerId: null, timer: 0, active: false, x: 0, y: 0, suppressClick: false };
 const mobileLayout = matchMedia("(max-width: 760px), (pointer: coarse) and (max-height: 600px)");
 const portraitLibrary = matchMedia("(max-width: 760px) and (orientation: portrait)");
@@ -112,6 +131,7 @@ function firstScenePreview(scene) {
   if (scene.source?.catalog) return null;
   const availableAsset = (page) => page?.presentation?.mode !== "special"
     && page?.visual?.status === "available" && page.visual.assetId
+    && [undefined, "image"].includes(state.data.assets.visualById.get(page.visual.assetId)?.kind)
     && state.data.assets.visualById.get(page.visual.assetId)?.status === "available";
   if (scene.eventCgPages > 0) {
     const page = scene.pages[scene.firstEventCgPageIndex];
@@ -165,6 +185,7 @@ function sceneButton(scene) {
   thumbnail.setAttribute("aria-hidden", "true");
   const preview = firstScenePreview(scene);
   thumbnail.textContent = preview ? "载入中" : scene.source?.catalog ? "素材目录"
+    : scene.pages.some((page) => page.visualState?.layers.some((layer) => ["video", "live2d"].includes(state.data.assets.visualById.get(layer.assetId)?.kind))) ? "动画场景"
     : scene.eventCgPages > 0 ? "CG 未就绪" : scene.eventCgKnown ? "无 CG" : "无预览";
   if (preview) {
     thumbnail.title = preview.verified ? "首张事件 CG" : "首张可用画面；是否属于 CG 待核对";
@@ -761,7 +782,7 @@ function processPageAudio(page) {
   enforceAuxiliaryAudio(page);
 }
 
-async function renderVisual(page) {
+async function renderVisual(page, { reset = false } = {}) {
   const token = ++state.renderToken;
   el.image.hidden = true;
   el.canvas.hidden = true;
@@ -770,6 +791,15 @@ async function renderVisual(page) {
   el.frame.style.setProperty("--visual-aspect", "1.777778");
   el.specialPlaceholder.hidden = true;
   el.stage.classList.toggle("is-special", page.presentation?.mode === "special");
+  $("animation-controls").hidden = !page.visualState?.layers.some((layer) => layer.visible
+    && ["live2d", "video"].includes(state.data.assets.visualById.get(layer.assetId)?.kind)) || page.presentation?.mode === "special";
+  if (page.visualState && page.presentation?.mode !== "special") {
+    el.placeholder.hidden = true;
+    el.frame.style.setProperty("--visual-aspect", String(page.visualState.width / page.visualState.height));
+    await animation.show(page.visualState, state.data.assets.visualById, state.source, { reset });
+    return;
+  }
+  animation.clear();
   if (page.presentation?.mode === "special") {
     el.placeholder.hidden = true;
     el.imageNote.hidden = true;
@@ -846,7 +876,7 @@ function renderChoices(page) {
     if (choice.condition) button.title = `原始条件：${choice.condition}`;
     if (!choice.targetPageId && choice.targetRef) button.title = `目标待核对：${choice.targetRef}`;
     button.addEventListener("click", () => {
-      if (state.data.schemaVersion === "1.1.0") {
+      if (hasExplicitFlow(state.data.schemaVersion)) {
         const next = currentPage()?.next;
         if (next?.status === "choice") {
           for (const event of next.audioEvents || []) playAudioEvent(event);
@@ -880,6 +910,11 @@ function renderPageDetails(page) {
   el.detailVisualRole.textContent = eventCg
     ? limitations.length ? "CG基础画面 · 源演出未完全还原" : "事件CG"
     : visual?.role || page.source?.visualState?.role || "未标注";
+  if (page.visualState) {
+    el.detailVisual.textContent = page.visualState.layers.map((layer) => `${layer.id}: ${layer.assetId || "待解析"}`).join("、") || "已清空";
+    el.detailVisualRole.textContent = page.visualState.layers.map((layer) => layer.role || "待标注").join("、") || "空画面";
+    el.status.textContent = page.visualState.layers.length ? "图层状态见下方" : "明确清屏";
+  }
   const bgm = pageBgmAsset(page);
   const active = state.data.assets.audioById.get(state.audio.get("bgm")?._assetId);
   el.detailBgm.textContent = bgm?.name || page.audioState?.sourceBgmKey || active?.name || "无";
@@ -906,7 +941,7 @@ function renderPageDetails(page) {
     limitations.length ? `未还原演出：${limitations.join("、")}` : ""].filter(Boolean).join(" · ") || "已标准化页面数据";
 }
 
-function renderPage() {
+function renderPage({ resetVisual = true } = {}) {
   const page = currentPage();
   if (!page) return;
   el.sceneHeading.textContent = state.scene.title || state.scene.id;
@@ -924,7 +959,7 @@ function renderPage() {
   el.pageTotal.textContent = `/ ${state.scene.pages.length}`;
   el.slider.setAttribute("aria-valuetext", `第 ${state.pageIndex + 1} 页，共 ${state.scene.pages.length} 页`);
   el.previous.disabled = state.pageIndex === 0 && !state.readingHistory.length;
-  el.next.disabled = state.data.schemaVersion === "1.1.0"
+  el.next.disabled = hasExplicitFlow(state.data.schemaVersion)
     ? page.choices.length > 0 : state.pageIndex >= state.scene.pages.length - 1;
   el.firstEventCg.hidden = state.scene.eventCgPages <= 0;
   el.firstEventCg.disabled = state.scene.firstEventCgPageIndex < 0;
@@ -933,7 +968,7 @@ function renderPage() {
   el.firstEventCg.setAttribute("aria-label", el.firstEventCg.title);
   renderChoices(page);
   if (page.choices.some((choice) => choice.enabled)) setDialogueVisible(true);
-  renderVisual(page);
+  renderVisual(page, { reset: resetVisual });
   for (const button of el.sceneList.querySelectorAll(".scene-item")) button.setAttribute("aria-selected", String(button.dataset.sceneId === state.scene.id));
   processPageAudio(page);
   renderPageDetails(page);
@@ -948,7 +983,7 @@ function selectPage(index, { continueAuto = false } = {}) {
   const sequential = nextIndex === state.pageIndex + 1;
   state.readingHistory = [];
   state.pageIndex = nextIndex;
-  if (!sequential || state.data.schemaVersion === "1.1.0") {
+  if (!sequential || hasExplicitFlow(state.data.schemaVersion)) {
     restoreBgm(state.scene, state.pageIndex, true);
     restoreAuxiliaryAudio(state.scene, state.pageIndex);
   }
@@ -994,7 +1029,7 @@ function scheduleAuto() {
   const dueAt = Math.max(state.audioPageStartedAt + scenePageDuration(page), wait?.finishedAt ? wait.finishedAt + 250 : 0);
   state.autoTimer = setTimeout(() => {
     if (!state.auto || currentPage() !== page || pageToken !== state.audioPageToken) return;
-    if (state.data.schemaVersion === "1.1.0" || state.pageIndex < state.scene.pages.length - 1) {
+    if (hasExplicitFlow(state.data.schemaVersion) || state.pageIndex < state.scene.pages.length - 1) {
       advancePage(1);
     } else stopAuto();
   }, Math.max(0, dueAt - performance.now()));
@@ -1002,7 +1037,7 @@ function scheduleAuto() {
 
 function advancePage(direction) {
   if (!state.scene) return;
-  if (state.data.schemaVersion === "1.1.0") {
+  if (hasExplicitFlow(state.data.schemaVersion)) {
     if (direction > 0) {
       if (currentPage().choices.length) return;
       followTransition(currentPage().next);
@@ -1034,7 +1069,7 @@ function followTransition(transition) {
   state.readingHistory.push({ sceneId: state.scene.id, pageIndex: state.pageIndex });
   state.scene = scene;
   state.pageIndex = targetIndex;
-  renderPage();
+  renderPage({ resetVisual: false });
 }
 
 function usePackage(source) {
@@ -1043,6 +1078,10 @@ function usePackage(source) {
   stopAllAudio();
   state.renderToken += 1;
   state.bytes.clear();
+  animation.clear();
+  animation.setPaused(false);
+  $("animation-pause").textContent = "暂停动画";
+  $("animation-pause").setAttribute("aria-pressed", "false");
   state.source?.dispose();
   state.source = source;
   state.data = source.data;
@@ -1200,7 +1239,7 @@ function fastForwardStep() {
   if (!hold.active) return;
   const page = currentPage();
   if (!page || document.hidden || state.audioSuspended || page.choices.length ||
-      (state.data.schemaVersion === "1.1.0" && (!page.next || page.next.status === "end" || page.next.status === "unresolved"))) {
+      (hasExplicitFlow(state.data.schemaVersion) && (!page.next || page.next.status === "end" || page.next.status === "unresolved"))) {
     stopAuto();
     stopFastForward();
     return;
@@ -1476,6 +1515,7 @@ function handleBack() {
 }
 
 function pauseForBackground() {
+  animation.setSuspended(true);
   stopFastForward({ resume: false });
   stopAuto();
   if (state.audioSuspended) return;
@@ -1495,6 +1535,7 @@ function pauseForBackground() {
 
 function resumeForForeground() {
   if (document.hidden) return;
+  animation.setSuspended(false);
   const suspended = state.audioSuspended;
   state.audioSuspended = false;
   if (suspended) {
@@ -1508,6 +1549,35 @@ function resumeForForeground() {
 }
 
 window.CGSceneAndroid = {
+  async onPackagesChanged() {
+    if (!nativeHost) return;
+    const selected = el.packageSelect.value;
+    const token = ++state.loadToken;
+    await refreshPackageCatalog();
+    if (token !== state.loadToken) return;
+    if ([...el.packageSelect.options].some((option) => option.value === selected && selected)) {
+      el.packageSelect.value = selected;
+      return;
+    }
+    stopAllAudio();
+    animation.clear();
+    state.renderToken += 1;
+    state.bytes.clear();
+    state.source?.dispose();
+    state.source = null;
+    state.data = null;
+    state.scene = null;
+    el.image.removeAttribute("src");
+    el.image.hidden = true;
+    el.canvas.hidden = true;
+    el.text.textContent = "当前作品已移除，正在打开创作者示例。";
+    el.sceneList.replaceChildren();
+    const url = choosePackageUrl("/datasets/example/package.json", "创作者示例");
+    const currentUrl = new URL(location.href);
+    currentUrl.searchParams.set("package", url.href);
+    history.replaceState(null, "", currentUrl);
+    await openPackage(url);
+  },
   async onPackageSelected({ url, title } = {}) {
     if (!nativeHost || !url) return;
     const selected = new URL(url, location.href);

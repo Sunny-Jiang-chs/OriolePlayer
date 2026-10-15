@@ -14,8 +14,8 @@ android {
         applicationId 'com.cgscenestudio.player'
         minSdk 26
         targetSdk 36
-        versionCode 7
-        versionName '0.2.5'
+        versionCode 9
+        versionName '0.3.1'
         testInstrumentationRunner 'com.cgscenestudio.player.SmokeInstrumentation'
     }
 
@@ -50,12 +50,17 @@ android {
     }
 
     androidResources {
-        noCompress += ['wav', 'mp3', 'ogg', 'm4a', 'bin', 'hidc']
+        noCompress += ['wav', 'mp3', 'ogg', 'm4a', 'mp4', 'webm', 'moc3', 'bin', 'hidc']
     }
 }
 
 tasks.register('syncWebAssets', Sync) {
     description = 'Bundle the common player and the small author example only.'
+    doFirst {
+        for (String required : ['player/vendor/cubism/runtime.js', 'player/vendor/cubism/live2dcubismcore.min.js']) {
+            if (!new File(studioRoot, required).isFile()) throw new GradleException('Missing local Cubism runtime; run node scripts/build-cubism.mjs first: ' + required)
+        }
+    }
     into generatedWebAssets.map { it.dir('web') }
     from(studioRoot) {
         include 'index.html'

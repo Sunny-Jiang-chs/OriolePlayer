@@ -1,0 +1,79 @@
+<!doctype html><meta charset="utf-8"><title>Animation lifecycle checks</title><link rel="icon" href="../player/branding/huangli-icon-192.png">
+<style>#surface{position:relative;width:960px;height:540px}.visual-layer{position:absolute}.visual-layer>*{width:100%;height:100%;object-fit:contain}pre{white-space:pre-wrap}</style>
+<pre id="results" role="status">Running synthetic / SDK sample checks…</pre><div id="surface"></div>
+<script type="module">
+import { VisualStage } from '../player/visual-stage.js';
+import { loadUrlPackage, loadDirectoryPackage } from '../player/package-loader.js';
+import { visualAssetUris } from '../player/vendor/cgscene/package-utils.js';
+const results = document.querySelector('#results'), lines = [];
+const stage = new VisualStage(document.querySelector('#surface'));
+const assert = (condition, label) => { if (!condition) throw new Error(label); lines.push(`PASS ${label}`); results.textContent = lines.join('\n'); };
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let directory;
+try {
+  const source = await loadUrlPackage('../datasets/animation-demo/package.json');
+  const { data } = source, assets = data.assets.visualById;
+  const first = structuredClone(data.scenes[0].pages[0].visualState);
+  const playback = first.layers[1].playback;
+  const motion = await (await fetch(source.resolve(playback.motion))).json();
+  playback.startTime = motion.Meta.Duration - 0.15;
+  playback.rate = 4;
+  await stage.show(first, assets, source);
+  const subject = stage.entries.get('subject'), controller = subject.controller;
+  assert(subject.status === 'ready' && controller?.getModel().getDrawableCount() > 0, 'model, textures and shaders initialize');
+  const before = Array.from(controller.getModel().getModel().parameters.values);
+  await sleep(500);
+  assert(controller.elapsed > 0.4 && !controller._motionManager.isFinished(), 'loop continues past motion end');
+  const after = Array.from(controller.getModel().getModel().parameters.values);
+  assert(after.every(Number.isFinite) && after.some((value, i) => Math.abs(value - before[i]) > .001), 'model parameters actually animate');
+  stage.setPaused(true); const elapsed = controller.elapsed; await sleep(150);
+  assert(controller.elapsed === elapsed, 'pause freezes motion time');
+  stage.setPaused(false);
+  const next = structuredClone(first); next.layers[1].playback.rate = 2; next.layers[1].playback.parameters = { PARAM_ANGLE_X: 12 };
+  await stage.show(next, assets, source);
+  assert(stage.entries.get('subject').controller === controller, 'sequential page preserves instance across parameter/rate changes');
+  await stage.show(data.scenes[0].pages[2].visualState, assets, source);
+  assert(stage.entries.get('subject').controller !== controller && controller.disposed, 'new clip/expression replaces and disposes old instance');
+  const empty = data.scenes[0].pages[3].visualState;
+  await stage.show(empty, assets, source);
+  assert(stage.entries.size === 0 && !document.querySelector('canvas,video,img'), 'empty snapshot removes all media');
+  await stage.show(data.scenes[0].pages[4].visualState, assets, source);
+  assert(stage.entries.get('pending').status === 'error', 'unresolved layer produces explicit placeholder');
+  const videoState = structuredClone(data.scenes[1].pages[0].visualState);
+  videoState.layers[0].playback.startTime = 2.8; videoState.layers[0].playback.rate = 4;
+  await stage.show(videoState, assets, source);
+  const video = document.querySelector('video'); await sleep(500);
+  assert(video && !video.paused && video.currentTime < 2.8 && video.muted, 'muted video loops after end');
+  const retained = stage.entries.get('clip').controller;
+  videoState.layers[0].playback.rate = .75;
+  await stage.show(videoState, assets, source);
+  assert(stage.entries.get('clip').controller === retained && video.playbackRate === .75, 'video continues across page and accepts new rate');
+  await stage.show(data.scenes[1].pages[2].visualState, assets, source);
+  await sleep(100);
+  const pausedVideo = document.querySelector('video');
+  assert(pausedVideo.paused && Math.abs(pausedVideo.currentTime - 1) < .1, 'authored pause and startTime restored');
+  await stage.show(empty, assets, source);
+  const loading = stage.show(first, assets, source);
+  await stage.show(empty, assets, source); await loading;
+  assert(stage.entries.size === 0 && !document.querySelector('canvas'), 'late async load cannot resurrect cleared layer');
+  const uris = ['package.json', ...data.assets.visuals.flatMap(visualAssetUris)];
+  const files = await Promise.all([...new Set(uris)].map(async (uri) => {
+    const blob = await (await fetch(new URL(uri, new URL('../datasets/animation-demo/package.json', location.href)))).blob();
+    const file = new File([blob], uri.split('/').at(-1), { type: blob.type });
+    Object.defineProperty(file, 'webkitRelativePath', { value: `demo/${decodeURIComponent(uri)}` }); return file;
+  }));
+  directory = await loadDirectoryPackage(files);
+  await stage.show(directory.data.scenes[0].pages[0].visualState, directory.data.assets.visualById, directory);
+  assert(stage.entries.get('subject').status === 'ready', 'directory import resolves model dependencies through object URLs');
+  const seekController = stage.entries.get('subject').controller;
+  await stage.show(directory.data.scenes[0].pages[0].visualState, directory.data.assets.visualById, directory, { reset: true });
+  assert(seekController.disposed && stage.entries.get('subject').controller !== seekController, 'manual seek resets target snapshot');
+  stage.clear(); directory.dispose();
+  document.title = 'PASS animation checks';
+  results.textContent += `\nDONE ${lines.length} checks`;
+} catch (error) {
+  stage.clear(); directory?.dispose();
+  document.title = 'FAIL animation checks';
+  results.textContent += `\nFAIL ${error.stack}`;
+}
+</script>

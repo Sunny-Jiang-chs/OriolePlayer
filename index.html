@@ -5,15 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#111214">
   <title>黄鹂播放器</title>
-  <link rel="icon" type="image/png" href="./player/branding/huangli-icon-192.png">
+  <meta name="application-name" content="黄鹂播放器">
+  <link rel="icon" type="image/png" sizes="32x32" href="./player/branding/huangli-icon-32.png?v=3">
+  <link rel="icon" type="image/png" sizes="192x192" href="./player/branding/huangli-icon-192.png?v=3">
   <link rel="stylesheet" href="./player/app.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="./" aria-label="黄鹂播放器首页"><img src="./player/branding/huangli-icon-192.png" alt="" width="26" height="26"><span>黄鹂播放器</span></a>
+    <a class="brand" href="./" aria-label="黄鹂播放器首页"><img src="./player/branding/huangli-icon-192.png?v=3" alt="" width="26" height="26"><span class="brand-title"><span>黄鹂</span><span class="brand-role">播放器</span></span></a>
     <div class="project-name"><span id="project-title">正在载入数据包</span><span id="project-meta" class="muted"></span></div>
     <div class="top-actions">
-      <a id="desktop-organizer-link" class="icon-button directory-button" href="./organizer/index.html" title="筛选场景并重新导出数据包" hidden><i data-lucide="list-filter"></i><span>整理</span></a>
+      <a id="desktop-organizer-link" class="icon-button directory-button" href="./organizer/index.html" title="在拾景中筛选场景并重新导出数据包" hidden><i data-lucide="list-filter"></i><span>拾景</span></a>
       <select id="package-select" class="package-select" aria-label="数据包"><option value="">数据包</option></select>
       <label class="icon-button directory-button" title="打开数据包目录" aria-label="打开数据包目录"><i data-lucide="folder-open"></i><span>目录</span><input id="package-folder" type="file" webkitdirectory directory multiple hidden></label>
     </div>
@@ -50,6 +52,10 @@
             </section>
           </div>
           <button id="auto-toggle" class="tool-button labeled" type="button" title="自动推进"><i data-lucide="play"></i><span>自动</span></button>
+          <div id="animation-controls" class="animation-controls" hidden>
+            <button id="animation-pause" class="tool-button labeled" type="button" aria-pressed="false">暂停动画</button>
+            <button id="animation-restart" class="tool-button labeled" type="button" title="恢复本页显示快照，不重播对白和声音">重播本页动画</button>
+          </div>
           <button id="fullscreen-view" class="tool-button" type="button" title="全屏预览" aria-label="全屏预览"><i data-lucide="maximize"></i></button>
         </div>
       </div>
@@ -57,6 +63,7 @@
         <button id="exit-fullscreen" class="tool-button fullscreen-exit" type="button" title="退出全屏" aria-label="退出全屏" hidden><i data-lucide="minimize"></i></button>
         <div id="fast-forward-indicator" class="fast-forward-indicator" role="status" hidden>快进中 · 松开停止</div>
         <div id="visual-frame" class="visual-frame">
+        <div id="visual-layers" class="visual-layers" hidden></div>
         <img id="still-image" alt="当前页面画面" draggable="false" hidden>
         <canvas id="decoded-image" hidden></canvas>
         <div id="stage-placeholder" class="stage-placeholder"><i data-lucide="image" class="placeholder-icon"></i><span>画面尚未载入</span></div>
@@ -88,6 +95,7 @@
         <div><dt>立绘状态</dt><dd id="detail-standing">—</dd></div>
       </dl>
       <div class="inspector-section"><div class="section-title">声音事件</div><ol id="audio-events" class="event-list"><li class="muted">无</li></ol></div>
+      <div class="inspector-section"><div class="section-title">显示图层</div><ol id="visual-layer-details" class="event-list"><li class="muted">无活动图层</li></ol></div>
       <div class="inspector-section"><div class="section-title">数据来源</div><p id="source-note" class="source-note">—</p></div>
     </aside>
   </main>

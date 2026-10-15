@@ -32,12 +32,12 @@ node ..\CGSceneKit\scripts\sync-consumer.mjs --consumer studio
 node ..\CGSceneKit\scripts\sync-consumer.mjs --consumer parsers
 ```
 
-先修改共享源并提升共享包版本，再同步消费项目；`shared-lock.json` 记录当前版本和摘要。不要直接修改生成的快照。代码包版本与标准数据包的 `schemaVersion` 分开管理：本次源码整理不改变数据格式 1.0/1.1。
+先修改共享源并提升共享包版本，再同步消费项目；`shared-lock.json` 记录当前版本和摘要。不要直接修改生成的快照。代码包版本与标准数据包的 `schemaVersion` 分开管理：当前 CGSceneKit 0.2.1 支持数据格式 1.0 / 1.1 / 1.2，1.2 增加完整图层快照及 image/video/live2d 资源。具体契约以 Kit 的 Schema 和格式说明为准。
 
 ## 提交与发布边界
 
 公共模块改动归 Kit；整理、提取、导出 UI 改动归 Parsers；播放和手机改动归 Studio。消费者同步时，把共享快照与对应 `shared-lock.json` 放在同一个依赖更新提交中。跨项目功能分别提交，各自说明需要的共享版本，避免把游戏适配器或筛选逻辑混进播放器提交。
 
-目前 Studio 有 Git 仓库，Parsers 与 Kit 尚未初始化 Git；目录边界已可独立纳入版本管理。本次只整理文件，不自动提交或发布。Studio 已有的播放、品牌与 Android 工作不属于此次拆分，不应顺带纳入拆分提交。
+Studio、Parsers 与 Kit 均已建立独立 Git 仓库，各自维护源码与版本。工作区中的未提交改动需要按实际功能和依赖关系分别核对；目录归并或共享模块同步不代表这些改动已提交或发布。
 
 桌面发行脚本只打包播放器及其共享快照；Android 的既有 `player/**` 规则自然包含共享 JS，不增加整理功能。运行版无需共享源码项目，完整提取和人工选择也不依赖安装播放器。

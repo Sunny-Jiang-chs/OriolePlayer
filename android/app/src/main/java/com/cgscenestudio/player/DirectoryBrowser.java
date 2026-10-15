@@ -220,8 +220,7 @@ final class DirectoryBrowser {
                 long pages = 0;
                 for (int i = 0; i < scenes.length(); i++) {
                     JSONObject scene = scenes.optJSONObject(i);
-                    JSONArray scenePages = scene == null ? null : scene.optJSONArray("pages");
-                    if (scenePages != null) pages += scenePages.length();
+                    if (scene != null) pages += scene.optLong("pageCount");
                 }
                 String description = manifest.getJSONObject("project").getString("title")
                         + "\n" + scenes.length() + " 个场景 · " + pages + " 页 · 直接读取，无需复制";

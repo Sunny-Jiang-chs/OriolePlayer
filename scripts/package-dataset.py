@@ -135,6 +135,22 @@ def build(args):
             # URI escaping and ZIP filenames are separate: a literal # or % in
             # a valid filename must not turn into a fragment or second escape.
             asset["uri"] = quote(name, safe="/")
+            # 1.2 models carry textures/motions/physics in a declared closure.
+            if group == "visuals":
+                dependencies = asset.get("dependencies", [])
+                if not isinstance(dependencies, list):
+                    raise ValueError("Visual dependencies must be an array")
+                for dependency in dependencies:
+                    dependency_name = safe_uri(dependency)
+                    dependency_source = (root / dependency_name).resolve()
+                    if not dependency_source.is_relative_to(root) or not dependency_source.is_file():
+                        raise ValueError(f"Missing or external model dependency: {dependency!r}")
+                    folded = dependency_name.casefold()
+                    if folded in used_names and used_names[folded] != dependency_name:
+                        raise ValueError(f"Case-insensitive dependency collision: {dependency_name}")
+                    used_names[folded] = dependency_name
+                    files[dependency_name] = dependency_source
+                    original_files[dependency_name] = dependency_source
 
     converted = reused = 0
     if audio_sources:

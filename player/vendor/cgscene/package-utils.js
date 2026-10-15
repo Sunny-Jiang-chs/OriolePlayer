@@ -26,6 +26,7 @@ export function pageReferences(page) {
   const visuals = new Set();
   const audio = new Set();
   addReference(visuals, page.visual?.assetId);
+  for (const layer of page.visualState?.layers || []) addReference(visuals, layer.assetId);
   const events = [page.audioEvents, page.next?.audioEvents, ...(page.choices || []).map((choice) => choice?.audioEvents)];
   for (const list of events) for (const event of Array.isArray(list) ? list : []) addReference(audio, event?.assetId);
   for (const state of [page.audioState, page.seekAudioState]) {
@@ -33,5 +34,10 @@ export function pageReferences(page) {
     for (const bus of Object.values(state?.buses || {})) addReference(audio, bus?.assetId);
   }
   return { visuals, audio };
+}
+
+/** Include model textures/motions/physics when moving a referenced visual asset. */
+export function visualAssetUris(asset) {
+  return [...new Set([asset.uri, ...(asset.dependencies || [])].filter(Boolean))];
 }
 

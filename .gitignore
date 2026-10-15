@@ -29,12 +29,18 @@
 /assets/branding/*
 !/assets/branding/huangli-player-icon-v1.png
 !/assets/branding/huangli-player-icon-v1.prompt.txt
+!/assets/branding/huangli-player-icon-v2.png
+!/assets/branding/huangli-player-icon-v2.prompt.txt
 !/assets/branding/README.md
 
 /docs/*
 !/docs/ANDROID.md
 !/docs/ARCHITECTURE.md
 /scripts/*
+!/scripts/build-cubism.mjs
+!/scripts/build-animation-demo.mjs
+!/scripts/animation-smoke.html
+!/docs/ANIMATION.md
 !/scripts/package-dataset.py
 !/scripts/package-release.py
 !/scripts/artifact_store.py

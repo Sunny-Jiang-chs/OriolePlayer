@@ -1,4 +1,5 @@
 @echo off
+title Scenepicker - Scene Organizer
 cd /d "%~dp0"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-organizer.ps1" %*
 if errorlevel 1 pause

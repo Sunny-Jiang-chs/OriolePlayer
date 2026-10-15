@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cgscenestudio.local/schema/cgscene-package-1.1.0.json",
+  "$id": "https://cgscenestudio.local/schema/cgscene-package-1.2.0.json",
   "title": "CG Scene Package",
-  "description": "Portable page-based visual novel and static CG preview package. Each page references one final composite image, plain text, entry-time audio events, and optional explicit choices.",
+  "description": "Portable page-based scene package with explicit navigation, audio, and optional full visual layer snapshots for desktop image/video/Live2D playback.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -14,7 +14,8 @@
     "schemaVersion": {
       "enum": [
         "1.0.0",
-        "1.1.0"
+        "1.1.0",
+        "1.2.0"
       ]
     },
     "project": {
@@ -126,9 +127,43 @@
         "source": {
           "type": "object",
           "additionalProperties": true
+        },
+        "kind": {
+          "enum": [
+            "image",
+            "video",
+            "live2d"
+          ]
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
         }
       },
-      "additionalProperties": true
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "live2d"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "dependencies"
+            ]
+          }
+        }
+      ]
     },
     "audioAsset": {
       "type": "object",
@@ -485,6 +520,9 @@
             }
           },
           "additionalProperties": true
+        },
+        "visualState": {
+          "$ref": "#/$defs/visualState"
         }
       },
       "allOf": [
@@ -624,6 +662,161 @@
         }
       },
       "additionalProperties": true
+    },
+    "visualPlayback": {
+      "type": "object",
+      "properties": {
+        "instanceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "motion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expression": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "playing": {
+          "type": "boolean"
+        },
+        "rate": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 4
+        },
+        "startTime": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 86400
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "parts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "visualLayer": {
+      "type": "object",
+      "required": [
+        "id",
+        "assetId",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "available",
+            "missing",
+            "unresolved"
+          ]
+        },
+        "role": {
+          "type": "string"
+        },
+        "source": {},
+        "sourceRef": {
+          "type": "string"
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 32768
+        },
+        "height": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 32768
+        },
+        "rotation": {
+          "type": "number"
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "zIndex": {
+          "type": "number"
+        },
+        "fit": {
+          "enum": [
+            "contain",
+            "cover"
+          ]
+        },
+        "playback": {
+          "$ref": "#/$defs/visualPlayback"
+        }
+      },
+      "additionalProperties": false
+    },
+    "visualState": {
+      "type": "object",
+      "required": [
+        "layers"
+      ],
+      "properties": {
+        "width": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 32768
+        },
+        "height": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 32768
+        },
+        "background": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$"
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/visualLayer"
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": true,
@@ -632,7 +825,10 @@
       "if": {
         "properties": {
           "schemaVersion": {
-            "const": "1.1.0"
+            "enum": [
+              "1.1.0",
+              "1.2.0"
+            ]
           }
         }
       },
@@ -646,6 +842,50 @@
                     "required": [
                       "next"
                     ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "enum": [
+              "1.0.0",
+              "1.1.0"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "scenes": {
+            "items": {
+              "properties": {
+                "pages": {
+                  "items": {
+                    "not": {
+                      "required": [
+                        "visualState"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "assets": {
+            "properties": {
+              "visuals": {
+                "items": {
+                  "properties": {
+                    "kind": {
+                      "const": "image"
+                    }
                   }
                 }
               }

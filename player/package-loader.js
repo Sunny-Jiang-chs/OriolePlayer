@@ -1,4 +1,5 @@
 import { normalizePackage } from "./vendor/cgscene/package-model.js";
+import { safeRelativePath } from "./vendor/cgscene/package-utils.js";
 export { normalizePackage, SCHEMA_VERSION } from "./vendor/cgscene/package-model.js";
 
 export async function loadUrlPackage(url) {
@@ -15,18 +16,6 @@ export async function loadUrlPackage(url) {
   return { data, resolve: (uri) => new URL(uri, manifestUrl).href, dispose() {} };
 }
 
-function relativePath(value) {
-  const parts = [];
-  for (const part of value.replaceAll("\\", "/").split("/")) {
-    if (!part || part === ".") continue;
-    if (part === "..") {
-      if (!parts.length) throw new Error("资源路径超出所选目录");
-      parts.pop();
-    } else parts.push(part);
-  }
-  return parts.join("/");
-}
-
 export async function loadDirectoryPackage(fileList) {
   const files = [...fileList];
   const manifest = files.find((file) => file.name === "package.json");
@@ -39,7 +28,7 @@ export async function loadDirectoryPackage(fileList) {
   return {
     data,
     resolve(uri) {
-      const path = relativePath(`${base}${uri}`);
+      const path = `${base}${safeRelativePath(uri)}`;
       const file = paths.get(path);
       if (!file) throw new Error(`数据包缺少文件：${uri}`);
       if (!objectUrls.has(path)) objectUrls.set(path, URL.createObjectURL(file));

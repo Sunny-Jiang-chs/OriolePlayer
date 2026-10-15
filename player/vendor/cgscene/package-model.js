@@ -1,5 +1,6 @@
-export const SCHEMA_VERSION = "1.1.0";
-const SUPPORTED_VERSIONS = new Set(["1.0.0", "1.1.0"]);
+import { hasExplicitFlow, normalizeVisualState, validateVisualAsset } from "./visual-state.js";
+export const SCHEMA_VERSION = "1.2.0";
+const SUPPORTED_VERSIONS = new Set(["1.0.0", "1.1.0", "1.2.0"]);
 
 function fail(message) {
   throw new Error(`数据包错误：${message}`);
@@ -37,10 +38,16 @@ function summarizeEventCg(scene) {
   scene.eventCgKnown = false;
   if (scene.source?.catalog) return;
 
-  const hasPreview = (page) => page.visual?.status === "available" && Boolean(page.visual.assetId);
-  const roleKnown = scene.pages.some((page) => typeof page.visual?.role === "string" || typeof page.source?.visualState?.role === "string");
+  const hasPreview = (page) => page.visualState
+    ? page.visualState.layers.some((l) => l.visible && l.status === "available" && l.assetId)
+    : page.visual?.status === "available" && Boolean(page.visual.assetId);
+  const roleKnown = scene.pages.some((page) => page.visualState
+    ? page.visualState.layers.some((layer) => typeof layer.role === "string")
+    : typeof page.visual?.role === "string" || typeof page.source?.visualState?.role === "string");
   const eventPages = scene.pages.flatMap((page, index) =>
-    hasPreview(page) && (page.visual?.role === "event-cg" || page.source?.visualState?.role === "event-cg") ? [index] : []);
+    hasPreview(page) && (page.visualState
+      ? page.visualState.layers.some((l) => l.visible && l.status === "available" && l.role === "event-cg")
+      : page.visual?.role === "event-cg" || page.source?.visualState?.role === "event-cg") ? [index] : []);
   const declared = scene.source?.eventCg;
   scene.eventCgKnown = roleKnown || Boolean(declared && typeof declared === "object");
   if (roleKnown) {
@@ -59,7 +66,7 @@ function summarizeEventCg(scene) {
 }
 
 export function normalizePackage(input) {
-  if (!SUPPORTED_VERSIONS.has(input?.schemaVersion)) fail("支持 schema 1.0.0 / 1.1.0");
+  if (!SUPPORTED_VERSIONS.has(input?.schemaVersion)) fail("支持 schema 1.0.0 / 1.1.0 / 1.2.0");
   if (typeof input.project?.id !== "string" || !input.project.id || typeof input.project.title !== "string") fail("缺少 project.id/title");
   const visuals = input.assets?.visuals;
   const audio = input.assets?.audio;
@@ -71,6 +78,10 @@ export function normalizePackage(input) {
     validateRelativeUri(asset.uri, asset.id);
     if (!["available", "missing", "unresolved"].includes(asset.status)) fail(`资源 ${asset.id} 的 status 无效`);
   }
+  for (const asset of visuals) {
+    validateVisualAsset(asset);
+    if (input.schemaVersion !== "1.2.0" && asset.kind && asset.kind !== "image") fail("动态资源需要 schema 1.2.0");
+  }
   for (const scene of input.scenes) {
     scene.pageById = indexById(scene.pages, `场景 ${scene.id} pages`);
     if (scene.pages.some((page) => !Number.isInteger(page.order) || page.order < 0)) fail(`场景 ${scene.id} 的页面 order 无效`);
@@ -80,7 +91,11 @@ export function normalizePackage(input) {
     for (const page of scene.pages) {
       if (!page.text || typeof page.text.body !== "string" || typeof page.text.speaker !== "string") fail(`页面 ${page.id} 缺少 text.speaker/body`);
       if (!page.visual || !Array.isArray(page.audioEvents) || !Array.isArray(page.choices)) fail(`页面 ${page.id} 缺少 visual/audioEvents/choices`);
-      if (input.schemaVersion === "1.1.0" && !Object.prototype.hasOwnProperty.call(page, "next")) fail(`页面 ${page.id} 缺少明确后继 next`);
+      if (hasExplicitFlow(input.schemaVersion) && !Object.prototype.hasOwnProperty.call(page, "next")) fail(`页面 ${page.id} 缺少明确后继 next`);
+      if (page.visualState !== undefined) {
+        if (input.schemaVersion !== "1.2.0") fail("visualState 需要 schema 1.2.0");
+        page.visualState = normalizeVisualState(page.visualState, visualById);
+      }
       if (!["available", "missing", "unresolved"].includes(page.visual.status)) fail(`页面 ${page.id} 的 visual.status 无效`);
       if (page.visual.sourceKind !== undefined && !["page", "inherited", "scene-preview"].includes(page.visual.sourceKind)) fail(`页面 ${page.id} 的 visual.sourceKind 无效`);
       if (page.presentation && (page.presentation.mode !== "special" || page.presentation.status !== "unresolved")) fail(`页面 ${page.id} 的 presentation 无效`);
@@ -88,7 +103,8 @@ export function normalizePackage(input) {
         fail(`页面 ${page.id} 的场景预览图必须使用特殊演出占位`);
       }
       if (page.visual.assetId && !visualById.has(page.visual.assetId)) fail(`页面 ${page.id} 画面引用不存在：${page.visual.assetId}`);
-      if (page.visual.assetId) scene.mappedPages += 1;
+      if (!page.visualState && ["video", "live2d"].includes(visualById.get(page.visual.assetId)?.kind)) fail(`页面 ${page.id} 的动态画面必须放入 visualState`);
+      if (page.visualState ? page.visualState.layers.some((l) => l.visible && l.assetId && l.status === "available") : page.visual.assetId) scene.mappedPages += 1;
       if (page.audioState?.bgmAssetId && !audioById.has(page.audioState.bgmAssetId)) fail(`页面 ${page.id} BGM 引用不存在`);
       if (page.audioState?.bgmVolume !== undefined && (!Number.isFinite(page.audioState.bgmVolume) || page.audioState.bgmVolume < 0 || page.audioState.bgmVolume > 1)) fail(`页面 ${page.id} 的 audioState.bgmVolume 无效`);
       if (page.audioState?.bgmLoop !== undefined && typeof page.audioState.bgmLoop !== "boolean") fail(`页面 ${page.id} 的 audioState.bgmLoop 无效`);

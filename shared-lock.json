@@ -1,23 +1,27 @@
 {
   "lockVersion": 1,
   "package": "@cgscene/kit",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "files": {
     "src/package-model.js": {
       "target": "player/vendor/cgscene/package-model.js",
-      "sha256": "65105c3a14a74076ccc06834f9e1571058fee6762c4afa74ba6eb0ac82458bcb"
+      "sha256": "c9a9279626606767ff53475ce49557548467fdde304ecbd87121081b6bfdd79b"
     },
     "src/package-utils.js": {
       "target": "player/vendor/cgscene/package-utils.js",
-      "sha256": "675722310a7e5570ef191458615eb1d4d06a197facf17f6a91cf501f9b599754"
+      "sha256": "47ecc86990ececede286d6ff2fca34312596a32df5336a4a05dd87005f09079d"
+    },
+    "src/visual-state.js": {
+      "target": "player/vendor/cgscene/visual-state.js",
+      "sha256": "8a8723c9f41c63672a34977e60ffec7f0e3cbfc4afa3120bb19b960fcf1f6dde"
     },
     "schema/cgscene-package.schema.json": {
       "target": "schema/cgscene-package.schema.json",
-      "sha256": "c5d8df4914a02b4396e364f2574cedf25388a269c5894e30c98e265dc9428c39"
+      "sha256": "d7997faaa0e149d40d80a288281abf7cebb063a368a5c3beb2282537d18977a6"
     },
     "schema/README.md": {
       "target": "schema/README.md",
-      "sha256": "ad9730748474825ac75cb027ed5680873032b86581a8ea88813c5bc097cd348a"
+      "sha256": "87e4dc8bce4a6f8ce1daa9f790c7399de08d58eeba347b9df94c1f3175d5a7a8"
     }
   }
 }
