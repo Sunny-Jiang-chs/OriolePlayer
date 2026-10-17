@@ -10,14 +10,14 @@
 
 ## 下载与开始使用
 
-在 [Releases](https://github.com/Sunny-Jiang-chs/huangli-player/releases) 页面下载。2026-10-15 核对 GitHub 官方发行记录，当前公开版本为 [v0.2.3](https://github.com/Sunny-Jiang-chs/huangli-player/releases/tag/v0.2.3)，与下方当前源码能力分开说明：
+在 [Releases](https://github.com/Sunny-Jiang-chs/huangli-player/releases) 页面下载，当前版本为 [v0.3.1](https://github.com/Sunny-Jiang-chs/huangli-player/releases/tag/v0.3.1)：
 
 | 文件 | 使用方式 |
 | --- | --- |
-| `HuangliPlayer-0.2.3-release.apk` | 安装到 Android 手机，导入该版本支持的标准数据包 |
-| `HuangliPlayer-0.2.3-web.zip` | 解压后在电脑启动本地网页播放器 |
+| `HuangliPlayer-0.3.1-release.apk` | 安装到 Android 手机，导入标准数据包 |
+| `HuangliPlayer-0.3.1-web.zip` | 解压后在电脑启动本地网页播放器 |
 
-两种版本均内置小型创作者示例。自己的作品作为独立数据包导入，不需要重新编译播放器。本文后续的 1.2 动态图层和作品空间管理说明对应较新的源码，不能视为公开 v0.2.3 已包含；后续发行以 Releases 的实际记录为准。
+两种版本均内置小型创作者示例，支持 1.2 动态图层；Android 版提供作品位置与空间管理。自己的作品作为独立数据包导入，不需要重新编译播放器。各版本的更新内容见对应 Release 说明。
 
 ### Android
 
